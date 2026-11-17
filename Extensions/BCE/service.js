@@ -28,6 +28,8 @@ const PROMPT_MAX_CONCURRENT = 3;
 const PROMPT_MAX_ACTIVE_JOBS = 50;
 let promptMutationQueue = Promise.resolve();
 let promptDispatching = false;
+let promptRuntimeRecovered = false;
+let promptRuntimeRecovery = null;
 
 const TEAMS_LIVE_KEY = "teamsLiveEnabled";
 const TEAMS_GROUPS_KEY = "teamsSelectedGroups";
@@ -232,6 +234,7 @@ async function dispatchOnePromptJob(jobId) {
   await startPromptResponseMonitor(confirmed.job);
 }
 async function dispatchPromptJobs() {
+  await ensurePromptRuntimeRecovered();
   if(promptDispatching) return;
   promptDispatching=true;
   try {
@@ -246,6 +249,7 @@ async function dispatchPromptJobs() {
   }
 }
 async function createChatGPTPromptJob(request) {
+  await ensurePromptRuntimeRecovered();
   const tabId=request?.tabId;
   const prompt=typeof request?.prompt==="string"?request.prompt.trim():"";
   const repeatLimit=request?.repeatLimit;
@@ -287,6 +291,7 @@ async function createChatGPTPromptJob(request) {
   return result.job;
 }
 async function mutatePromptJob(jobId,action,decision) {
+  await ensurePromptRuntimeRecovered();
   const now=Date.now();
   const result=await mutatePromptJobs(jobs=>{
     if(action==="pause") return requestPromptPause(jobs,jobId,now);
@@ -323,6 +328,7 @@ async function resumePromptMonitorsForTab(tabId,conversation) {
 }
 async function handleChatGPTContentEvent(message,sender) {
   if(!isChatGPTContentSender(sender)) return;
+  await ensurePromptRuntimeRecovered();
   const tabId=sender.tab.id;
   const pageUrl=sender.url||sender.tab.url||"";
   const actualConversation=conversationIdFromUrl(pageUrl);
@@ -352,19 +358,29 @@ async function handleChatGPTContentEvent(message,sender) {
     if(result?.ok) await publishPromptJobs();
   }
 }
-async function recoverPromptJobs() {
-  const jobs=await getStoredPromptJobs();
-  for(const job of jobs) {
-    if(job.status==="sending") {
-      await mutatePromptJobs(current=>markPromptDispatchUncertain(
-        current,job.id,job.currentToken,
-        "The extension restarted while a prompt send was in progress. Check ChatGPT before deciding whether to retry."
-      ));
-    }
+async function ensurePromptRuntimeRecovered() {
+  if(promptRuntimeRecovered) return;
+  if(promptRuntimeRecovery) {
+    await promptRuntimeRecovery;
+    return;
   }
-  const refreshed=await getStoredPromptJobs();
-  for(const job of refreshed) {
-    if(job.status==="awaiting_response") {
+
+  const recovery=(async()=>{
+    // A persisted "sending" state has no reliable proof that the page accepted
+    // the prompt. Never retry it automatically after a worker restart.
+    const jobs=await getStoredPromptJobs();
+    for(const job of jobs) {
+      if(job.status==="sending"&&job.currentToken) {
+        await mutatePromptJobs(current=>markPromptDispatchUncertain(
+          current,job.id,job.currentToken,
+          "The extension worker restarted while a prompt send was in progress. Check ChatGPT before deciding whether it was sent."
+        ));
+      }
+    }
+
+    const refreshed=await getStoredPromptJobs();
+    for(const job of refreshed) {
+      if(job.status!=="awaiting_response"||!job.currentToken) continue;
       try {
         const tab=await chrome.tabs.get(job.tabId);
         if(!chatgptUrl(tab?.url)||conversationIdFromUrl(tab.url)!==job.conversationId) {
@@ -382,8 +398,20 @@ async function recoverPromptJobs() {
         ));
       }
     }
+
+    promptRuntimeRecovered=true;
+    await publishPromptJobs();
+  })();
+
+  promptRuntimeRecovery=recovery;
+  try {
+    await recovery;
+  } finally {
+    if(promptRuntimeRecovery===recovery) promptRuntimeRecovery=null;
   }
-  await publishPromptJobs();
+}
+async function recoverPromptJobs() {
+  await ensurePromptRuntimeRecovered();
   dispatchPromptJobs().catch(()=>{});
 }
 async function handlePromptTabRemoved(tabId) {
@@ -1086,14 +1114,11 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 chrome.tabs.onUpdated.addListener(async(tabId,changeInfo,tab)=>{
   if(changeInfo.status!=="complete") return;
   if(chatgptUrl(tab?.url)) {
-    const jobs=await getStoredPromptJobs();
-    const hasPending=jobs.some(job=>job.tabId===tabId&&job.status==="awaiting_response");
-    if(hasPending) {
-      try {
-        const info=await getChatGPTTabInfo(tabId);
-        await resumePromptMonitorsForTab(tabId,info.conversationId);
-      } catch (_) {}
-    }
+    await ensurePromptRuntimeRecovered();
+    try {
+      const info=await getChatGPTTabInfo(tabId);
+      await resumePromptMonitorsForTab(tabId,info.conversationId);
+    } catch (_) {}
     return;
   }
   if(!teamsUrl(tab?.url)) return;
