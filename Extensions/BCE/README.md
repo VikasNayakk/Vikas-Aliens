@@ -20,6 +20,18 @@ Existing Chrome Manifest V3 extension being upgraded incrementally into the Alie
 
 This browser-only mode watches Teams in-app notification cards in an open Teams tab and matches each notification's group name against your selected groups. It does not use Microsoft Graph, Entra app registration, Power Automate, or separate hidden monitor tabs. Keep at least one Teams web tab open. In Teams, enable message previews in notifications and make sure chat notifications are shown as banners. Existing notification cards are ignored when monitoring first starts; new cards are processed after that. If Teams does not create an in-app notification card for a chat, the extension cannot read that message in this mode. The one-time last-five option reads from the currently open chat when you add it.
 
+### ChatGPT prompt scheduler
+
+1. Open the ChatGPT conversations you want to target in separate browser tabs. Each conversation must have a visible prompt composer and an enabled Send control.
+2. Click the BCE toolbar icon and choose **Open ChatGPT Prompt Scheduler**.
+3. Enter the prompt, select one or more available conversations, and choose a finite repeat count or **Unlimited**.
+4. Click **Create prompt jobs**. BCE creates one independent job per selected conversation.
+5. BCE can dispatch up to three different conversations concurrently. Within one conversation, only one prompt job can send at a time; the next repeat waits for the current assistant response to be considered complete.
+6. Use **Pause after response** or **Stop after response** for an active job. Queued jobs can be paused or stopped immediately.
+7. If the send or response state is uncertain, the job enters **Needs review**. Check the ChatGPT conversation and explicitly resolve it. BCE does not automatically resend an uncertain prompt.
+
+**Current limitation:** the ChatGPT adapter uses page DOM controls and generation indicators. It requires a matching new user-message echo after sending, then waits for a new assistant message to remain stable after visible generation indicators disappear. This is a conservative browser-DOM heuristic, not a server-confirmed completion event. Live Chrome / ChatGPT UI smoke testing is still pending. Saved prompt templates, repeat intervals, Thinking-mode selection and automated login / rate-limit recovery are not implemented yet.
+
 ## Install locally
 1. Download or clone this repository.
 2. Open chrome://extensions and enable Developer mode.
@@ -27,9 +39,9 @@ This browser-only mode watches Teams in-app notification cards in an open Teams 
 4. Open Microsoft Teams and click the extension icon.
 
 ## Current implementation boundaries
-- The active manifest uses `popup.html` / `popup.js` as the toolbar UI, `service.js` as the service worker and `teams-content.js` as the Teams content script.
+- The active manifest uses `popup.html` / `popup.js` as the toolbar UI, `service.js` as the service worker, `teams-content.js` as the Teams content script and `chatgpt-content.js` as the controlled ChatGPT page adapter. The toolbar popup opens `prompt-manager.html` for ChatGPT job creation and control.
 - `sidepanel.html`, `ui.js` and `background.js` are legacy, unregistered files. Their old Teams reader and read-only ChatGPT parser are not active. Do not load that old side panel alongside the active Teams reader.
-- ChatGPT prompt sending, repeated prompt scheduling, multiple-conversation queues, workflow execution, Teams task approvals and Microsoft application adapters are not implemented yet.
+- ChatGPT prompt sending and finite / unlimited repeated jobs are implemented as an initial extension feature; live web-page behavior is pending manual browser smoke testing. General workflow execution, Teams task approvals and Microsoft application adapters are not implemented yet.
 - The optional OpenAI analysis handler remains in the source, but the active Teams live reader does not automatically send monitored messages to OpenAI.
 - Chrome speech voices and available audio codecs depend on the browser and operating system.
 
