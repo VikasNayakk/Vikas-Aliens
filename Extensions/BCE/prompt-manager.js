@@ -360,6 +360,72 @@ async function runJobAction(jobId,action,decision,button){
     button.disabled=false;
   }
 }
+$("templateSelect").addEventListener("change",()=>{
+  $("templateVariables").replaceChildren();
+  const selected=selectedTemplate();
+  if(selected){
+    $("templateName").value=selected.name;
+    $("templateContent").value=selected.content;
+    templateStatus(selected.enabled?"Template loaded for editing.":"This template is disabled; enable it before use.");
+  }else{
+    $("templateName").value="";
+    $("templateContent").value="";
+    templateStatus("Create a new template or select a saved one.");
+  }
+  renderTemplateVariables();
+});
+$("templateContent").addEventListener("input",renderTemplateVariables);
+$("refreshTemplates").addEventListener("click",()=>refreshTemplates());
+$("useTemplate").addEventListener("click",()=>{
+  const selected=selectedTemplate();
+  if(!selected?.enabled){templateStatus("Select an enabled template before using it.",true);return;}
+  try{renderTemplateToPrompt();templateStatus("Template applied. Review the prompt before creating jobs.");}
+  catch(error){templateStatus(error.message,true);}
+});
+$("saveTemplate").addEventListener("click",async()=>{
+  try{
+    const result=await request("SAVE_CHATGPT_PROMPT_TEMPLATE",{
+      name:$("templateName").value.trim(),
+      content:$("templateContent").value,
+      enabled:true
+    });
+    await refreshTemplates(result.template.id);
+    templateStatus("Template saved.");
+  }catch(error){templateStatus(error.message,true);}
+});
+$("updateTemplate").addEventListener("click",async()=>{
+  const selected=selectedTemplate();
+  if(!selected)return;
+  try{
+    const result=await request("SAVE_CHATGPT_PROMPT_TEMPLATE",{
+      id:selected.id,
+      name:$("templateName").value.trim(),
+      content:$("templateContent").value,
+      enabled:selected.enabled
+    });
+    await refreshTemplates(result.template.id);
+    templateStatus("Template updated.");
+  }catch(error){templateStatus(error.message,true);}
+});
+$("toggleTemplate").addEventListener("click",async()=>{
+  const selected=selectedTemplate();
+  if(!selected)return;
+  try{
+    const result=await request("SET_CHATGPT_PROMPT_TEMPLATE_ENABLED",{id:selected.id,enabled:!selected.enabled});
+    await refreshTemplates(result.template.id);
+    templateStatus(result.template.enabled?"Template enabled.":"Template disabled.");
+  }catch(error){templateStatus(error.message,true);}
+});
+$("deleteTemplate").addEventListener("click",async()=>{
+  const selected=selectedTemplate();
+  if(!selected)return;
+  if(!window.confirm("Delete the saved template '"+selected.name+"'? This cannot be undone."))return;
+  try{
+    await request("DELETE_CHATGPT_PROMPT_TEMPLATE",{id:selected.id});
+    await refreshTemplates("");
+    templateStatus("Template deleted.");
+  }catch(error){templateStatus(error.message,true);}
+});
 $("promptText").addEventListener("input",()=>{
   $("promptLength").textContent=$("promptText").value.length.toLocaleString()+" / 50,000";
   setBusy(busy);
@@ -438,4 +504,4 @@ chrome.storage.onChanged.addListener((changes,area)=>{
   if(area==="local"&&changes.chatgptPromptJobs) refreshJobs();
   if(area==="local"&&changes.chatgptPromptTemplates) refreshTemplates();
 });
-Promise.all([refreshConversations(),refreshJobs()]);
+Promise.all([refreshConversations(),refreshJobs(),refreshTemplates()]);
