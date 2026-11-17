@@ -41,6 +41,14 @@ test("rejects duplicate names case-insensitively and preserves the source list",
   assert.equal(first.templates.length,1);
 });
 
+test("rejects stale update IDs and duplicate IDs for new templates",()=>{
+  assert.equal(upsertPromptTemplate([],draft({updateExisting:true}),100).ok,false);
+  const created=upsertPromptTemplate([],draft(),100);
+  const duplicateId=upsertPromptTemplate(created.templates,draft({name:"Another name"}),200);
+  assert.equal(duplicateId.ok,false);
+  assert.match(duplicateId.error,/ID is already in use/i);
+});
+
 test("rejects invalid names, content, malformed variables and invalid enabled flags",()=>{
   assert.equal(upsertPromptTemplate([],draft({name:" "}),100).ok,false);
   assert.equal(upsertPromptTemplate([],draft({content:" "}),100).ok,false);
