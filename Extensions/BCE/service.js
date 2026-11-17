@@ -2,12 +2,32 @@ import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
 import {appendUniqueMessages,countPendingSpeechMessages,normalizeSpeechBatch} from "./speech-queue.mjs";
 import {resolveTeamsGroupIdentity} from "./group-identity.mjs";
 import {createMessageFingerprint,isTeamsContentSender,normalizeTeamsLiveMessage} from "./message-contracts.mjs";
+import {
+  beginPromptSend,
+  completePromptResponse,
+  confirmPromptSent,
+  createPromptJob,
+  failPromptDispatch,
+  markPromptDispatchUncertain,
+  markPromptResponseUncertain,
+  requestPromptPause,
+  requestPromptStop,
+  resolveUncertainPromptJob,
+  resumePromptJob,
+  selectDispatchablePromptJobs
+} from "./prompt-scheduler.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
 async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
 async function testApi(){const s=await chrome.storage.local.get(["apiKey","model"]);if(!s.apiKey)throw Error("Save an API key first.");await requestOpenAI(s.apiKey,s.model||"gpt-4.1-mini",[{role:"user",content:"Reply with exactly: API connection successful"}]);return {ok:true,model:s.model||"gpt-4.1-mini"};}
 async function analyze(input){const s=await chrome.storage.local.get(["apiKey","model","redact"]);const safe=s.redact===false?String(input):redactSensitiveText(input);if(!s.apiKey)return {output:localAnalyze(safe),remote:false};const output=await requestOpenAI(s.apiKey,s.model||"gpt-4.1-mini",[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:safe}]);return {output,remote:true};}
 
+
+const PROMPT_JOBS_KEY = "chatgptPromptJobs";
+const PROMPT_MAX_CONCURRENT = 3;
+const PROMPT_MAX_ACTIVE_JOBS = 50;
+let promptMutationQueue = Promise.resolve();
+let promptDispatching = false;
 
 const TEAMS_LIVE_KEY = "teamsLiveEnabled";
 const TEAMS_GROUPS_KEY = "teamsSelectedGroups";
@@ -27,6 +47,349 @@ let speechAdvanceTimer = null;
 
 const teamsUrl = url => /^https:\/\/(teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(url || "");
 const normalizeGroup = value => String(value || "").normalize("NFKC").replace(/\s+/g," ").trim().toLowerCase();
+
+const chatgptUrl = url => /^https:\/\/(?:chatgpt\.com|chat\.openai\.com)\//i.test(url||"");
+function conversationIdFromUrl(url) {
+  try {
+    const parsed=new URL(url);
+    if(!chatgptUrl(parsed.href)) return "";
+    const match=parsed.pathname.match(/(?:^|\/)c\/([A-Za-z0-9_-]{8,})(?:\/|$)/);
+    return match?decodeURIComponent(match[1]):"";
+  } catch (_) {
+    return "";
+  }
+}
+function isChatGPTContentSender(sender) {
+  if(!Number.isInteger(sender?.tab?.id)) return false;
+  if(sender.frameId!==0&&sender.frameId!==undefined) return false;
+  const url=sender.url||sender.tab.url||"";
+  return chatgptUrl(url)&&!!conversationIdFromUrl(url);
+}
+async function sendChatGPTTabMessage(tabId,message) {
+  const tab=await chrome.tabs.get(tabId);
+  if(!chatgptUrl(tab?.url)) throw new Error("The selected tab is not an allowed ChatGPT conversation.");
+  try {
+    return await chrome.tabs.sendMessage(tabId,message);
+  } catch (_) {
+    await chrome.scripting.executeScript({target:{tabId},files:["chatgpt-content.js"]});
+    return chrome.tabs.sendMessage(tabId,message);
+  }
+}
+async function getStoredPromptJobs() {
+  const saved=await chrome.storage.local.get(PROMPT_JOBS_KEY);
+  return Array.isArray(saved[PROMPT_JOBS_KEY])?saved[PROMPT_JOBS_KEY]:[];
+}
+async function mutatePromptJobs(mutator) {
+  const operation=promptMutationQueue.then(async()=>{
+    const jobs=await getStoredPromptJobs();
+    const result=await mutator(jobs);
+    if(Array.isArray(result?.jobs)) {
+      await chrome.storage.local.set({[PROMPT_JOBS_KEY]:result.jobs});
+    }
+    return result;
+  });
+  promptMutationQueue=operation.then(()=>undefined,()=>undefined);
+  return operation;
+}
+async function publishPromptJobs() {
+  const jobs=await getStoredPromptJobs();
+  const state={
+    jobs,
+    activeCount:jobs.filter(job=>["sending","awaiting_response","needs_review"].includes(job.status)).length,
+    queuedCount:jobs.filter(job=>job.status==="queued").length,
+    needsReviewCount:jobs.filter(job=>job.status==="needs_review").length
+  };
+  chrome.runtime.sendMessage({type:"CHATGPT_PROMPT_JOBS_UPDATED",state},()=>void chrome.runtime.lastError);
+  return state;
+}
+async function getChatGPTTabInfo(tabId) {
+  const tab=await chrome.tabs.get(tabId);
+  if(!chatgptUrl(tab?.url)) throw new Error("Open a ChatGPT conversation tab first.");
+  const info=await sendChatGPTTabMessage(tabId,{type:"CHATGPT_GET_CONVERSATION_INFO"});
+  const expectedId=conversationIdFromUrl(tab.url);
+  if(!info?.ok||!info.conversationId||info.conversationId!==expectedId) {
+    throw new Error(info?.error||"The active ChatGPT conversation could not be verified.");
+  }
+  return {
+    tabId,
+    conversationId:info.conversationId,
+    title:String(info.title||"ChatGPT conversation").slice(0,180),
+    url:tab.url,
+    composerAvailable:info.composerAvailable===true,
+    sendAvailable:info.sendAvailable===true
+  };
+}
+async function listChatGPTConversations() {
+  const tabs=await chrome.tabs.query({});
+  const candidates=tabs.filter(tab=>Number.isInteger(tab.id)&&chatgptUrl(tab.url));
+  const results=await Promise.all(candidates.map(async tab=>{
+    try {
+      const info=await getChatGPTTabInfo(tab.id);
+      return info;
+    } catch (_) {
+      return null;
+    }
+  }));
+  return results.filter(Boolean);
+}
+async function startPromptResponseMonitor(job) {
+  if(!job?.responseBaseline) {
+    const result=await mutatePromptJobs(jobs=>
+      markPromptResponseUncertain(jobs,job.id,job.currentToken,
+        "The send was confirmed but no response baseline was saved. Verify the ChatGPT conversation manually.")
+    );
+    await publishPromptJobs();
+    return result;
+  }
+  try {
+    const result=await sendChatGPTTabMessage(job.tabId,{
+      type:"CHATGPT_START_RESPONSE_MONITOR",
+      jobId:job.id,
+      token:job.currentToken,
+      conversationId:job.conversationId,
+      baseline:job.responseBaseline,
+      prompt:job.prompt
+    });
+    if(!result?.ok) throw new Error(result?.error||"The ChatGPT response monitor could not be attached.");
+    return {ok:true};
+  } catch(error) {
+    const result=await mutatePromptJobs(jobs=>
+      markPromptResponseUncertain(jobs,job.id,job.currentToken,
+        "The prompt was sent, but completion monitoring failed: "+error.message)
+    );
+    await publishPromptJobs();
+    return result;
+  }
+}
+async function dispatchOnePromptJob(jobId) {
+  const token=crypto.randomUUID();
+  const begun=await mutatePromptJobs(jobs=>beginPromptSend(jobs,jobId,token));
+  if(!begun?.ok) return;
+  await publishPromptJobs();
+
+  const job=begun.job;
+  let response;
+  try {
+    const tab=await chrome.tabs.get(job.tabId);
+    if(!chatgptUrl(tab?.url)||conversationIdFromUrl(tab.url)!==job.conversationId) {
+      throw new Error("The selected ChatGPT tab is no longer on the conversation assigned to this job.");
+    }
+    response=await sendChatGPTTabMessage(job.tabId,{
+      type:"CHATGPT_SEND_PROMPT",
+      jobId:job.id,
+      token,
+      conversationId:job.conversationId,
+      prompt:job.prompt
+    });
+  } catch(error) {
+    await mutatePromptJobs(jobs=>markPromptDispatchUncertain(
+      jobs,job.id,token,
+      "The extension lost contact with ChatGPT during the send. The prompt may have been sent; check the conversation before retrying. "+error.message
+    ));
+    await publishPromptJobs();
+    return;
+  }
+
+  if(!response?.ok) {
+    if(response?.uncertain) {
+      await mutatePromptJobs(jobs=>markPromptDispatchUncertain(
+        jobs,job.id,token,response.error||"The send result is uncertain.",Date.now(),response.baseline||null
+      ));
+    } else {
+      await mutatePromptJobs(jobs=>failPromptDispatch(
+        jobs,job.id,token,response?.error||"ChatGPT rejected the prompt before sending."
+      ));
+    }
+    await publishPromptJobs();
+    return;
+  }
+
+  if(!response.baseline||!Number.isInteger(response.baseline.assistantCount)||
+    !Number.isInteger(response.baseline.userCount)||!response.baseline.sentUserKey) {
+    await mutatePromptJobs(jobs=>markPromptDispatchUncertain(
+      jobs,job.id,token,
+      "ChatGPT accepted the send action but did not return a verifiable message baseline.",
+      Date.now(),response.baseline||null
+    ));
+    await publishPromptJobs();
+    return;
+  }
+
+  const confirmed=await mutatePromptJobs(jobs=>
+    confirmPromptSent(jobs,job.id,token,Date.now(),response.baseline)
+  );
+  if(!confirmed?.ok) return;
+  await publishPromptJobs();
+  await startPromptResponseMonitor(confirmed.job);
+}
+async function dispatchPromptJobs() {
+  if(promptDispatching) return;
+  promptDispatching=true;
+  try {
+    const jobs=await getStoredPromptJobs();
+    const selected=selectDispatchablePromptJobs(jobs,PROMPT_MAX_CONCURRENT);
+    await Promise.all(selected.map(jobId=>dispatchOnePromptJob(jobId)));
+  } finally {
+    promptDispatching=false;
+    await publishPromptJobs();
+    const pending=selectDispatchablePromptJobs(await getStoredPromptJobs(),PROMPT_MAX_CONCURRENT);
+    if(pending.length) setTimeout(()=>dispatchPromptJobs().catch(()=>{}),0);
+  }
+}
+async function createChatGPTPromptJob(request) {
+  const tabId=request?.tabId;
+  const prompt=typeof request?.prompt==="string"?request.prompt.trim():"";
+  const repeatLimit=request?.repeatLimit;
+  if(!Number.isInteger(tabId)||tabId<0) throw new Error("Select an open ChatGPT conversation tab.");
+  if(!prompt||prompt.length>50000) throw new Error("Prompt must contain 1–50,000 characters.");
+  if(repeatLimit!==null&&(!Number.isInteger(repeatLimit)||repeatLimit<1||repeatLimit>100000)) {
+    throw new Error("Repeat count must be 1–100,000, or choose unlimited mode.");
+  }
+
+  const info=await getChatGPTTabInfo(tabId);
+  if(!info.composerAvailable||!info.sendAvailable) {
+    throw new Error("The selected conversation does not currently expose a usable prompt composer and Send control.");
+  }
+
+  const result=await mutatePromptJobs(jobs=>{
+    const active=jobs.filter(job=>!["completed","stopped","failed"].includes(job.status)).length;
+    if(active>=PROMPT_MAX_ACTIVE_JOBS) {
+      return {ok:false,error:"BCE already has 50 active prompt jobs. Finish or stop an existing job first."};
+    }
+    const job=createPromptJob({
+      id:crypto.randomUUID(),
+      conversationId:info.conversationId,
+      tabId,
+      prompt,
+      repeatLimit
+    });
+    const retained=jobs.filter(item=>!["completed","stopped","failed"].includes(item.status)||
+      Date.now()-item.updatedAt<30*24*60*60*1000).slice(-200);
+    return {ok:true,jobs:[...retained,job],job};
+  });
+  if(!result?.ok) throw new Error(result?.error||"Could not create the prompt job.");
+  await publishPromptJobs();
+  dispatchPromptJobs().catch(()=>{});
+  return result.job;
+}
+async function mutatePromptJob(jobId,action,decision) {
+  const now=Date.now();
+  const result=await mutatePromptJobs(jobs=>{
+    if(action==="pause") return requestPromptPause(jobs,jobId,now);
+    if(action==="stop") return requestPromptStop(jobs,jobId,now);
+    if(action==="resume") return resumePromptJob(jobs,jobId,now);
+    if(action==="resolve") return resolveUncertainPromptJob(jobs,jobId,decision,now);
+    return {ok:false,error:"Unsupported prompt-job action."};
+  });
+  if(!result?.ok) throw new Error(result?.error||"Could not update this prompt job.");
+
+  if(action==="resolve"&&decision==="confirm_not_sent") {
+    const job=result.job;
+    if(Number.isInteger(job.tabId)) {
+      try { await sendChatGPTTabMessage(job.tabId,{type:"CHATGPT_STOP_RESPONSE_MONITOR",jobId}); } catch (_) {}
+    }
+    dispatchPromptJobs().catch(()=>{});
+  } else if(action==="resolve"&&result.job.status==="awaiting_response") {
+    await startPromptResponseMonitor(result.job);
+  } else if(action==="resolve"&&["stopped","failed","queued"].includes(result.job.status)) {
+    try { await sendChatGPTTabMessage(result.job.tabId,{type:"CHATGPT_STOP_RESPONSE_MONITOR",jobId}); } catch (_) {}
+    if(result.job.status==="queued") dispatchPromptJobs().catch(()=>{});
+  } else if(action==="resume") {
+    dispatchPromptJobs().catch(()=>{});
+  }
+  await publishPromptJobs();
+  return result.job;
+}
+async function resumePromptMonitorsForTab(tabId,conversation) {
+  const jobs=await getStoredPromptJobs();
+  const pending=jobs.filter(job=>
+    job.tabId===tabId&&job.conversationId===conversation&&job.status==="awaiting_response"
+  );
+  for(const job of pending) await startPromptResponseMonitor(job);
+}
+async function handleChatGPTContentEvent(message,sender) {
+  if(!isChatGPTContentSender(sender)) return;
+  const tabId=sender.tab.id;
+  const pageUrl=sender.url||sender.tab.url||"";
+  const actualConversation=conversationIdFromUrl(pageUrl);
+  if(message?.type==="CHATGPT_TAB_READY") {
+    if(message.conversationId!==actualConversation) return;
+    await resumePromptMonitorsForTab(tabId,actualConversation);
+    return;
+  }
+
+  const jobId=typeof message.jobId==="string"?message.jobId:"";
+  const token=typeof message.token==="string"?message.token:"";
+  if(!jobId||jobId.length>128||!token||token.length>128||message.conversationId!==actualConversation) return;
+  const jobs=await getStoredPromptJobs();
+  const job=jobs.find(item=>item.id===jobId);
+  if(!job||job.tabId!==tabId||job.conversationId!==actualConversation||job.currentToken!==token) return;
+
+  if(message.type==="CHATGPT_RESPONSE_COMPLETED") {
+    if(!Number.isInteger(message.responseLength)||message.responseLength<1||message.responseLength>500000) return;
+    const result=await mutatePromptJobs(current=>completePromptResponse(current,jobId,token,Date.now()));
+    if(result?.ok) {
+      await publishPromptJobs();
+      dispatchPromptJobs().catch(()=>{});
+    }
+  } else if(message.type==="CHATGPT_RESPONSE_UNCERTAIN") {
+    const reason=typeof message.reason==="string"?message.reason.slice(0,500):"ChatGPT response completion could not be verified.";
+    const result=await mutatePromptJobs(current=>markPromptResponseUncertain(current,jobId,token,reason));
+    if(result?.ok) await publishPromptJobs();
+  }
+}
+async function recoverPromptJobs() {
+  const jobs=await getStoredPromptJobs();
+  for(const job of jobs) {
+    if(job.status==="sending") {
+      await mutatePromptJobs(current=>markPromptDispatchUncertain(
+        current,job.id,job.currentToken,
+        "The extension restarted while a prompt send was in progress. Check ChatGPT before deciding whether to retry."
+      ));
+    }
+  }
+  const refreshed=await getStoredPromptJobs();
+  for(const job of refreshed) {
+    if(job.status==="awaiting_response") {
+      try {
+        const tab=await chrome.tabs.get(job.tabId);
+        if(!chatgptUrl(tab?.url)||conversationIdFromUrl(tab.url)!==job.conversationId) {
+          await mutatePromptJobs(current=>markPromptResponseUncertain(
+            current,job.id,job.currentToken,
+            "The ChatGPT tab was closed or navigated away while the response was pending."
+          ));
+        } else {
+          await startPromptResponseMonitor(job);
+        }
+      } catch (_) {
+        await mutatePromptJobs(current=>markPromptResponseUncertain(
+          current,job.id,job.currentToken,
+          "The ChatGPT tab is unavailable while the response is pending."
+        ));
+      }
+    }
+  }
+  await publishPromptJobs();
+  dispatchPromptJobs().catch(()=>{});
+}
+async function handlePromptTabRemoved(tabId) {
+  const jobs=await getStoredPromptJobs();
+  for(const job of jobs) {
+    if(job.tabId!==tabId) continue;
+    if(job.status==="sending") {
+      await mutatePromptJobs(current=>markPromptDispatchUncertain(
+        current,job.id,job.currentToken,
+        "The ChatGPT tab closed during prompt dispatch. Check the conversation before retrying."
+      ));
+    } else if(job.status==="awaiting_response") {
+      await mutatePromptJobs(current=>markPromptResponseUncertain(
+        current,job.id,job.currentToken,
+        "The ChatGPT tab closed before response completion could be verified."
+      ));
+    }
+  }
+  await publishPromptJobs();
+}
 
 async function getTeamsTabs() {
   const tabs=await chrome.tabs.query({});
