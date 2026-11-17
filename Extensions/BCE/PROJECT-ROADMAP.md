@@ -212,7 +212,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Add CI validation for JavaScript / ES-module syntax and Manifest V3 referenced files.
 - [x] Document active `chrome.runtime` message contracts in `MESSAGE-CONTRACTS.md`.
 - [x] Validate Teams message payload types, field sizes, required routing fields and audio URL protocols at the service-worker boundary.
-- [ ] Fix group identity to prefer stable Teams conversation IDs; retain safe migration for saved groups.
+- [x] Use stable Teams conversation IDs, reject same-name/different-ID collisions, and require one explicit remove/re-add for unverifiable legacy display-name-only groups.
 - [ ] Review and remove or deliberately reconnect obsolete monitor-tab helpers.
 - [ ] Decide whether the side panel becomes the primary workspace; wire it intentionally or retire its unreachable code.
 - [ ] Consolidate the duplicate Teams reader so only one authoritative pipeline is active.
@@ -342,11 +342,12 @@ The target product is much larger than the existing Voice Speakers release. Stat
 **Current verified baseline (2026-11-17):**
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
-- Phase 1 foundation stabilization: **6 of 13 tasks complete (46%)**; 7 tasks remain.
-- BCE JavaScript / ES-module syntax validation: **passed** for all 11 `.js` / `.mjs` files in the audited folder.
-- BCE unit tests: **10 / 10 passed** (speech queue normalization / recovery helpers and Teams message payload validation).
+- Phase 1 foundation stabilization: **7 of 13 tasks complete (54%)**; 6 tasks remain.
+- BCE JavaScript / ES-module syntax validation: **passed** for all 13 `.js` / `.mjs` files in the audited folder.
+- BCE unit tests: **17 / 17 passed** (speech queue helpers, Teams message payload validation and stable group identity / legacy migration decisions).
 - Manifest V3 JSON and referenced-file validation: **passed** (4 active references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
+- Stable Teams group identity: **implemented and unit-tested**; adding a new group requires a conversation ID, duplicate display-name collisions are rejected, and old display-name-only saved groups require one manual remove/re-add.
 - Current-commit whitespace validation: **passed**.
 - Real Chrome / Teams browser smoke verification: **0%** (not run in this repository review).
 - BCE-side external-AI connector bridge: **0% implemented** (AI model, training and reasoning are outside this extension workstream).
