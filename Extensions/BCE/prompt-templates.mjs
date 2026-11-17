@@ -1,7 +1,7 @@
 const MAX_TEMPLATES=100;
 const MAX_NAME_LENGTH=80;
 const MAX_CONTENT_LENGTH=50000;
-const VARIABLE_PATTERN=/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g;
+const VARIABLE_PATTERN=/{{\s*([A-Za-z][A-Za-z0-9_]{0,39})\s*}}/g;
 
 function invalid(error){return {ok:false,error};}
 function validTime(value){return typeof value==="number"&&Number.isFinite(value)&&value>=0;}
