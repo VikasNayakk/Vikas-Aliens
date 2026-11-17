@@ -39,6 +39,16 @@
       ],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "chatgpt-content.js"
+      ],
+      "run_at": "document_idle"
     }
   ]
 }
