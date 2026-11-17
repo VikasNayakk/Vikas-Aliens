@@ -38,6 +38,26 @@ async function collectSourceFiles(directory) {
   return found;
 }
 
+async function collectHtmlFiles(directory) {
+  const found=[];
+  for(const entry of await fs.promises.readdir(directory,{withFileTypes:true})) {
+    if(entry.name==="node_modules"||entry.name===".git") continue;
+    const absolute=path.join(directory,entry.name);
+    if(entry.isDirectory()) {
+      found.push(...await collectHtmlFiles(absolute));
+    } else if(entry.isFile()&&/\.html?$/i.test(entry.name)) {
+      found.push(absolute);
+    }
+  }
+  return found;
+}
+
+async function validateAllHtmlPages() {
+  const pages=await collectHtmlFiles(root);
+  for(const page of pages) validateHtmlReferences(page);
+  console.log("HTML assets verified; "+pages.length+" local page(s) checked.");
+}
+
 function validateHtmlReferences(htmlPath) {
   const html=fs.readFileSync(htmlPath,"utf8");
   const patterns=[
@@ -95,6 +115,7 @@ async function main() {
   console.log("JavaScript syntax valid; "+sourceFiles.length+" .js/.mjs files checked.");
 
   validateManifest();
+  await validateAllHtmlPages();
 }
 
 main().catch(error=>{
