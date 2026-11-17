@@ -109,6 +109,7 @@ async function mutatePromptTemplates(mutator) {
 async function saveChatGPTPromptTemplate(request) {
   const result=await mutatePromptTemplates(templates=>upsertPromptTemplate(templates,{
     id:typeof request?.id==="string"&&request.id?request.id:crypto.randomUUID(),
+    updateExisting:typeof request?.id==="string"&&!!request.id,
     name:request?.name,
     content:request?.content,
     enabled:request?.enabled
