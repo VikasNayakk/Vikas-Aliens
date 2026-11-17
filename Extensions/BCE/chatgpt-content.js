@@ -28,12 +28,18 @@
     const selectors=[
       '[data-testid="composer-text-input"]',
       "#prompt-textarea",
-      'textarea[placeholder]',
       '[contenteditable="true"][data-testid*="composer" i]',
-      '[contenteditable="true"][data-placeholder]'
+      '[contenteditable="true"][data-placeholder]',
+      'textarea[placeholder*="message" i]',
+      'textarea[placeholder*="ask" i]',
+      'textarea[placeholder*="prompt" i]'
     ];
     for(const selector of selectors){
-      const node=Array.from(document.querySelectorAll(selector)).find(visible);
+      const node=Array.from(document.querySelectorAll(selector)).find(candidate=>{
+        if(!visible(candidate)) return false;
+        const placeholder=clean(candidate.getAttribute("placeholder")||candidate.getAttribute("data-placeholder"));
+        return selector.includes("composer")||selector.includes("prompt-textarea")||/message|ask|prompt|chat/i.test(placeholder);
+      });
       if(node) return node;
     }
     return null;
@@ -42,15 +48,14 @@
   function sendButton(input=composer()){
     if(!input) return null;
     const form=input.closest("form");
+    if(!form) return null;
     const candidates=[
-      form?.querySelector('button[data-testid="send-button"]'),
-      form?.querySelector('button[data-testid*="send" i]'),
-      form?.querySelector('button[aria-label*="send" i]'),
-      document.querySelector('button[data-testid="send-button"]'),
-      document.querySelector('button[aria-label*="send message" i]'),
-      document.querySelector('button[aria-label*="send prompt" i]')
+      form.querySelector('button[data-testid="send-button"]'),
+      form.querySelector('button[data-testid*="send" i]'),
+      form.querySelector('button[aria-label*="send" i]'),
+      form.querySelector('button[type="submit"]')
     ];
-    return candidates.find(node=>visible(node)&&!node.disabled&&!node.getAttribute("aria-disabled"))||null;
+    return candidates.find(node=>visible(node)&&!node.disabled&&node.getAttribute("aria-disabled")!=="true")||null;
   }
 
   function extractMessageText(node,role){
@@ -154,9 +159,7 @@
         document.execCommand("insertText",false,text);
       }catch(_){}
       if(normalize(input.innerText||input.textContent)===normalize(text)) return true;
-      input.replaceChildren(document.createTextNode(text));
-      input.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"insertText",data:text}));
-      return normalize(input.innerText||input.textContent)===normalize(text);
+      return false;
     }
     return false;
   }
@@ -176,14 +179,14 @@
       };
       const scan=()=>{
         const users=messageRecords("user");
-        if(users.length>baselineCount){
-          const match=[...users].reverse().find(item=>normalize(item.text)===normalize(prompt));
+        const newMessages=users.slice(baselineCount);
+        if(newMessages.length){
+          const match=newMessages.find(item=>normalize(item.text)===normalize(prompt));
           if(match){
             finish({ok:true,record:match,count:users.length});
             return;
           }
-          const latest=users[users.length-1];
-          if(latest&&normalize(latest.text)!==normalize(prompt)&&now()-started>1200){
+          if(now()-started>1200){
             finish({ok:false,error:"A different user message appeared after the send attempt. The send result is ambiguous; the job needs review."});
           }
         }
@@ -262,7 +265,7 @@
       const assistant=current.assistant;
       const users=current.user;
 
-      if(users.count>baseline.userCount+1||
+      if(users.count>baseline.sentUserCount||
         (users.count===baseline.sentUserCount&&users.lastKey&&users.lastKey!==baseline.sentUserKey)){
         monitor.completed=true;
         stopMonitor(jobId);
@@ -331,7 +334,7 @@
     const existing=state.pendingSends.get(jobId);
     if(existing){
       if(existing.token!==token) return {ok:false,error:"A different send token is already active for this job."};
-      return {ok:true,alreadySent:true,baseline:existing.baseline};
+      return {ok:true,alreadySent:true,sendConfirmed:!!existing.echoConfirmed,baseline:existing.baseline};
     }
 
     const input=composer();
@@ -353,6 +356,7 @@
       token,
       conversationId:targetConversationId,
       prompt,
+      echoConfirmed:false,
       baseline:{
         assistantCount:before.assistant.count,
         assistantKey:before.assistant.lastKey,
@@ -367,9 +371,15 @@
 
     const echo=await waitForUserEcho(prompt,before.user.count);
     if(!echo.ok) {
-      return {ok:false,uncertain:!!echo.uncertain,error:echo.error};
+      return {
+        ok:false,
+        uncertain:true,
+        baseline:pending.baseline,
+        error:echo.error||"The prompt may have been sent, but the user-message acknowledgement could not be verified."
+      };
     }
 
+    pending.echoConfirmed=true;
     pending.baseline.sentUserCount=echo.count;
     pending.baseline.sentUserKey=echo.record.key;
     return {ok:true,baseline:pending.baseline};
@@ -404,7 +414,8 @@
         conversationId:info.conversationId,
         title:info.title,
         url:info.url,
-        snapshot:info
+        composerAvailable:info.composerAvailable,
+        sendAvailable:info.sendAvailable
       });
     }
   }
