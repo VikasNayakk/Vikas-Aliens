@@ -197,6 +197,7 @@ function renderJob(job){
     }else{
       actions.append(createActionButton("Confirm prompt sent",job.id,"resolve","confirm_sent","primary"));
       actions.append(createActionButton("Confirm not sent",job.id,"resolve","confirm_not_sent","warning"));
+      actions.append(createActionButton("Stop job",job.id,"resolve","stop_job","danger"));
     }
   }
   if(actions.children.length) card.append(actions);
