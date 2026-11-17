@@ -230,11 +230,13 @@
 
   function stopMonitor(jobId){
     const monitor=state.monitors.get(jobId);
-    if(!monitor) return;
-    monitor.observer?.disconnect();
-    clearInterval(monitor.poller);
-    clearTimeout(monitor.timeout);
-    state.monitors.delete(jobId);
+    if(monitor){
+      monitor.observer?.disconnect();
+      clearInterval(monitor.poller);
+      clearTimeout(monitor.timeout);
+      state.monitors.delete(jobId);
+    }
+    // Also clear a send record when monitor creation failed before registration.
     state.pendingSends.delete(jobId);
   }
 
@@ -316,6 +318,7 @@
       }
     }
 
+    state.monitors.set(jobId,monitor);
     monitor.observer=new MutationObserver(scan);
     monitor.observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true});
     monitor.poller=setInterval(scan,700);
