@@ -73,11 +73,11 @@ export function selectDispatchablePromptJobs(jobs,maxConcurrentConversations=3) 
     throw new TypeError("Concurrent conversation limit must be an integer from 1 to 20.");
   }
 
-  const locked=new Set(
-    jobs
-      .filter(job=>ACTIVE_CONVERSATION_STATES.has(job?.status))
-      .map(job=>job.conversationId)
-  );
+  const activeJobs=jobs.filter(job=>ACTIVE_CONVERSATION_STATES.has(job?.status));
+  const locked=new Set(activeJobs.map(job=>job.conversationId));
+  const availableSlots=maxConcurrentConversations-activeJobs.length;
+  if(availableSlots<=0) return [];
+
   const selected=[];
   const ordered=jobs
     .filter(job=>job?.status==="queued")
@@ -85,7 +85,7 @@ export function selectDispatchablePromptJobs(jobs,maxConcurrentConversations=3) 
     .sort((a,b)=>(a.createdAt-b.createdAt)||a.id.localeCompare(b.id));
 
   for(const job of ordered) {
-    if(selected.length>=maxConcurrentConversations) break;
+    if(selected.length>=availableSlots) break;
     if(locked.has(job.conversationId)) continue;
     selected.push(job.id);
     locked.add(job.conversationId);
