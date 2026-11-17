@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeTeamsLiveMessage } from "../message-contracts.mjs";
+import { isTeamsContentSender, normalizeTeamsLiveMessage } from "../message-contracts.mjs";
 
 test("accepts a valid Teams text message and normalizes its group key", () => {
   const message=normalizeTeamsLiveMessage({
@@ -45,6 +45,9 @@ test("rejects unsafe audio URL protocols and malformed audio references", () => 
     groupKey:"operations",sender:"A",audioUrl:"javascript:alert(1)"
   }),null);
   assert.equal(normalizeTeamsLiveMessage({
+    groupKey:"operations",sender:"A",audioUrl:"http://example.com/voice.ogg"
+  }),null);
+  assert.equal(normalizeTeamsLiveMessage({
     groupKey:"operations",sender:"A",audioRef:"unsafe/ref"
   }),null);
 });
@@ -59,4 +62,23 @@ test("rejects non-string and oversized message fields", () => {
   assert.equal(normalizeTeamsLiveMessage({
     groupKey:"operations",sender:"A",audioUrl:"https://example.com/"+"x".repeat(2100)
   }),null);
+});
+
+test("accepts only verified Teams content-script senders", () => {
+  assert.equal(isTeamsContentSender({
+    tab:{id:42,url:"https://teams.microsoft.com/v2/"}
+  }),true);
+  assert.equal(isTeamsContentSender({
+    tab:{id:43},
+    url:"https://teams.cloud.microsoft/"
+  }),true);
+  assert.equal(isTeamsContentSender({
+    url:"https://teams.microsoft.com/"
+  }),false);
+  assert.equal(isTeamsContentSender({
+    tab:{id:44,url:"https://teams.microsoft.com.evil.example/"}
+  }),false);
+  assert.equal(isTeamsContentSender({
+    tab:{id:45,url:"https://example.com/"}
+  }),false);
 });
