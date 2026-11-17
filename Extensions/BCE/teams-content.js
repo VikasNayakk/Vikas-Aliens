@@ -552,8 +552,9 @@
     if(message?.type==="TEAMS_GET_GROUP_INFO_V17"){
       const name=groupName(),key=normalize(name),root=findRoot();
       const batch=root?extract(root.node):{messages:[]};
+      const chatId=conversationChatId();
       const error=!name?"Teams group name could not be detected.":!root?"Open the group chat so its messages are visible.":"";
-      sendResponse({ok:!!name&&!!root,groupName:name,groupKey:key,baselineCount:batch.messages.length,error});
+      sendResponse({ok:!!name&&!!root,groupName:name,groupKey:key,chatId,baselineCount:batch.messages.length,error});
       return true;
     }
     if(message?.type==="TEAMS_GET_CHAT_INFO_V16"){
