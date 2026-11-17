@@ -37,6 +37,8 @@ export function upsertPromptTemplate(templates,input,now=Date.now()){
   if(!id) return invalid("A template ID must be supplied when creating a template.");
   const existingIndex=templates.findIndex(item=>item?.id===id);
   const previous=existingIndex>=0?templates[existingIndex]:null;
+  if(input.updateExisting===true&&existingIndex<0) return invalid("The selected template no longer exists. Refresh the template list.");
+  if(input.updateExisting!==true&&existingIndex>=0) return invalid("This template ID is already in use.");
   const duplicate=templates.find(item=>item?.id!==previous?.id&&
     String(item?.name||"").trim().toLocaleLowerCase()===name.toLocaleLowerCase());
   if(duplicate) return invalid("A template with this name already exists.");
