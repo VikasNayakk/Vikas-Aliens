@@ -1,4 +1,5 @@
 import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
+import {appendUniqueMessages,countPendingSpeechMessages,normalizeSpeechBatch} from "./speech-queue.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
 async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
@@ -43,15 +44,7 @@ async function getLiveState() {
   ]);
   const tabs=await getTeamsTabs();
   const groups=await getStoredGroups();
-  const queuedMessages=Array.isArray(saved.teamsSpeechQueue)
-    ? saved.teamsSpeechQueue.reduce((total,batch)=>total+(Array.isArray(batch.messages)?batch.messages.length:(batch.sender?1:0)),0)
-    : 0;
   const current=saved.teamsSpeechCurrent;
-  const currentLength=Array.isArray(current?.messages)
-    ? current.messages.length
-    : (current?.sender||current?.text||current?.audioRef||current?.audioUrl ? 1 : 0);
-  const currentIndex=Number.isInteger(current?.messageIndex)?Math.max(0,current.messageIndex):0;
-  const currentRemaining=Math.max(0,currentLength-currentIndex);
   return {
     teamsLiveEnabled:!!saved[TEAMS_LIVE_KEY],
     teamsTabCount:tabs.length,
@@ -61,7 +54,7 @@ async function getLiveState() {
     teamsSelectedGroups:groups,
     teamsReadCount:saved[TEAMS_READ_COUNT]||0,
     teamsRecentEvents:saved[TEAMS_RECENT_EVENTS]||[],
-    teamsQueueCount:queuedMessages+currentRemaining,
+    teamsQueueCount:countPendingSpeechMessages(saved.teamsSpeechQueue,current),
     teamsLastStatus:saved.teamsLastStatus||"",
     teamsPopupTheme:saved.teamsPopupTheme||"light"
   };
@@ -425,50 +418,11 @@ async function hydrateSpeechQueue(options={}) {
     if(speechQueueHydration===hydration) speechQueueHydration=null;
   }
 }
-function normalizeSpeechBatch(item){
-  const rawMessages=Array.isArray(item?.messages)
-    ? item.messages
-    : (item?.sender||item?.audioRef||item?.audioUrl||item?.text)
-      ? [{sender:item.sender||"",text:item.text||"",messageId:item.messageId||"",replyTo:item.replyTo||"",isReply:!!item.isReply,audioRef:item.audioRef||"",audioUrl:item.audioUrl||"",sourceTabId:item.sourceTabId}]
-      : [];
-  return {
-    groupKey:String(item?.groupKey||""),
-    groupName:String(item?.groupName||"Teams group"),
-    messages:rawMessages.map(message=>({
-      sender:String(message.sender||""),
-      text:String(message.text||""),
-      messageId:String(message.messageId||message.key||""),
-      replyTo:String(message.replyTo||""),
-      replyToMessageId:String(message.replyToMessageId||""),
-      isReply:!!message.isReply,
-      audioRef:String(message.audioRef||""),
-      audioUrl:String(message.audioUrl||""),
-      sourceTabId:Number.isInteger(message.sourceTabId)?message.sourceTabId:(Number.isInteger(item?.sourceTabId)?item.sourceTabId:null)
-    })),
-    priority:Number.isFinite(item?.priority)?item.priority:999,
-    sequence:Number.isFinite(item?.sequence)?item.sequence:Date.now(),
-    messageIndex:Number.isInteger(item?.messageIndex)?Math.max(0,item.messageIndex):0,
-    phase:["gap","message","audio"].includes(item?.phase)?item.phase:"group",
-    playbackId:String(item?.playbackId||"")
-  };
-}
-function speechMessageKey(message){
-  return message.messageId || [message.sender,message.text,message.audioRef,message.audioUrl].join("|");
-}
 async function persistSpeechQueue() {
   await chrome.storage.local.set({
     teamsSpeechQueue:speechQueue,
     teamsSpeechCurrent:speechCurrent
   });
-}
-function appendUniqueMessages(batch,messages){
-  const known=new Set(batch.messages.map(speechMessageKey));
-  for(const message of messages){
-    const key=speechMessageKey(message);
-    if(known.has(key)) continue;
-    batch.messages.push(message);
-    known.add(key);
-  }
 }
 async function enqueueSpeech(items) {
   await hydrateSpeechQueue();
