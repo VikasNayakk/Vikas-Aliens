@@ -16,6 +16,7 @@ let processedMessageIdsLoaded = false;
 let speechQueue = [];
 let speechCurrent = null;
 let speechQueueLoaded = false;
+let speechQueueHydration = null;
 let speechProcessing = false;
 let speechDispatchTimer = null;
 let groupDelayTimer = null;
@@ -367,48 +368,62 @@ async function readLastFive(groupKey) {
 
 async function hydrateSpeechQueue(options={}) {
   if(speechQueueLoaded) return;
-  const saved=await chrome.storage.local.get([TEAMS_LIVE_KEY,"teamsSpeechQueue","teamsSpeechCurrent"]);
-  speechQueue=(Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue:[])
-    .map(normalizeSpeechBatch).filter(batch=>batch.messages.length>0);
-  speechCurrent=saved.teamsSpeechCurrent?normalizeSpeechBatch(saved.teamsSpeechCurrent):null;
-  speechQueueLoaded=true;
-
-  if(!saved[TEAMS_LIVE_KEY]) return;
-
-  // If the event that woke the service worker is the completion signal for
-  // the persisted audio item, consume that signal instead of replaying it.
-  if(
-    speechCurrent?.phase==="audio" &&
-    options.completedPlaybackId &&
-    options.completedPlaybackId===speechCurrent.playbackId
-  ) return;
-
-  if(speechCurrent?.phase==="gap") {
-    const sequence=speechCurrent.sequence;
-    groupDelayTimer=setTimeout(()=>{
-      if(speechCurrent?.sequence===sequence&&speechCurrent.phase==="gap") {
-        speechCurrent.phase="message";
-        persistSpeechQueue().then(speakCurrentPhase);
-      }
-    },5000);
+  if(speechQueueHydration) {
+    await speechQueueHydration;
     return;
   }
 
-  if(speechCurrent) {
-    const recovered=speechCurrent;
-    try { chrome.tts.stop(); } catch (_) {}
-    if(recovered.phase==="audio") {
-      await stopTeamsAudio();
-      if(speechCurrent!==recovered) return;
-      recovered.phase="message";
-      recovered.playbackId="";
+  const hydration=(async()=>{
+    const saved=await chrome.storage.local.get([TEAMS_LIVE_KEY,"teamsSpeechQueue","teamsSpeechCurrent"]);
+    speechQueue=(Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue:[])
+      .map(normalizeSpeechBatch).filter(batch=>batch.messages.length>0);
+    speechCurrent=saved.teamsSpeechCurrent?normalizeSpeechBatch(saved.teamsSpeechCurrent):null;
+    speechQueueLoaded=true;
+
+    if(!saved[TEAMS_LIVE_KEY]) return;
+
+    // If the event that woke the service worker is the completion signal for
+    // the persisted audio item, consume that signal instead of replaying it.
+    if(
+      speechCurrent?.phase==="audio" &&
+      options.completedPlaybackId &&
+      options.completedPlaybackId===speechCurrent.playbackId
+    ) return;
+
+    if(speechCurrent?.phase==="gap") {
+      const sequence=speechCurrent.sequence;
+      groupDelayTimer=setTimeout(()=>{
+        if(speechCurrent?.sequence===sequence&&speechCurrent.phase==="gap") {
+          speechCurrent.phase="message";
+          persistSpeechQueue().then(speakCurrentPhase);
+        }
+      },5000);
+      return;
     }
-    await persistSpeechQueue();
-    if(speechCurrent===recovered) speakCurrentPhase();
-    return;
-  }
 
-  scheduleSpeechQueue();
+    if(speechCurrent) {
+      const recovered=speechCurrent;
+      try { chrome.tts.stop(); } catch (_) {}
+      if(recovered.phase==="audio") {
+        await stopTeamsAudio();
+        if(speechCurrent!==recovered) return;
+        recovered.phase="message";
+        recovered.playbackId="";
+      }
+      await persistSpeechQueue();
+      if(speechCurrent===recovered) speakCurrentPhase();
+      return;
+    }
+
+    scheduleSpeechQueue();
+  })();
+
+  speechQueueHydration=hydration;
+  try {
+    await hydration;
+  } finally {
+    if(speechQueueHydration===hydration) speechQueueHydration=null;
+  }
 }
 function normalizeSpeechBatch(item){
   const rawMessages=Array.isArray(item?.messages)
