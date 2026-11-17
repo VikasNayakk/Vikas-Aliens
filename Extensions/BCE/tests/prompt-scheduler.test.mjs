@@ -46,7 +46,7 @@ test("creates a finite job with a validated initial state", () => {
 });
 
 test("creates an unlimited job only with an explicit unlimited mode", () => {
-  const created = job({ repeatMode: "unlimited" });
+  const created = job({ repeatMode: "unlimited", repeatCount: null });
   assert.equal(created.repeatMode, "unlimited");
   assert.equal(created.repeatCount, null);
 });
@@ -141,7 +141,7 @@ test("finite jobs complete at the exact requested count", () => {
 });
 
 test("unlimited jobs keep scheduling until explicitly stopped", () => {
-  let current = [job({ repeatMode: "unlimited" })];
+  let current = [job({ repeatMode: "unlimited", repeatCount: null })];
   for (let index = 1; index <= 3; index++) {
     const dispatchId = "dispatch-" + index;
     const now = 100 + (index - 1) * 1002;
