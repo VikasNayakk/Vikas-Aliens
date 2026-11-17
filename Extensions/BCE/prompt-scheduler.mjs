@@ -55,6 +55,8 @@ export function createPromptJob(input,now=Date.now()) {
     completedCount:0,
     status:"queued",
     currentToken:null,
+    responseBaseline:null,
+    uncertaintyKind:null,
     pauseRequested:false,
     stopRequested:false,
     createdAt:now,
@@ -118,7 +120,7 @@ export function beginPromptSend(jobs,jobId,token,now=Date.now()) {
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
 }
 
-export function confirmPromptSent(jobs,jobId,token,now=Date.now()) {
+export function confirmPromptSent(jobs,jobId,token,now=Date.now(),responseBaseline=null) {
   if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
   const job=findJob(jobs,jobId);
   if(!job) return errorResult("Prompt job was not found.");
@@ -127,9 +129,22 @@ export function confirmPromptSent(jobs,jobId,token,now=Date.now()) {
   }
   if(!validTime(now)) return errorResult("Send acknowledgement time is invalid.");
 
+  const baseline=responseBaseline&&typeof responseBaseline==="object"
+    ?{
+      assistantCount:Number.isInteger(responseBaseline.assistantCount)?Math.max(0,responseBaseline.assistantCount):0,
+      assistantKey:String(responseBaseline.assistantKey||"").slice(0,256),
+      assistantHash:String(responseBaseline.assistantHash||"").slice(0,32),
+      assistantLength:Number.isInteger(responseBaseline.assistantLength)?Math.max(0,responseBaseline.assistantLength):0,
+      userCount:Number.isInteger(responseBaseline.userCount)?Math.max(0,responseBaseline.userCount):0,
+      sentUserCount:Number.isInteger(responseBaseline.sentUserCount)?Math.max(0,responseBaseline.sentUserCount):0,
+      sentUserKey:String(responseBaseline.sentUserKey||"").slice(0,256)
+    }
+    :null;
   const updated={
     ...job,
     status:"awaiting_response",
+    responseBaseline:baseline,
+    uncertaintyKind:null,
     sentCount:job.sentCount+1,
     lastSentAt:now,
     updatedAt:now
@@ -157,6 +172,8 @@ export function completePromptResponse(jobs,jobId,token,now=Date.now()) {
     status,
     completedCount,
     currentToken:null,
+    responseBaseline:null,
+    uncertaintyKind:null,
     pauseRequested:false,
     stopRequested:false,
     lastCompletedAt:now,
@@ -211,7 +228,7 @@ export function resumePromptJob(jobs,jobId,now=Date.now()) {
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
 }
 
-export function markPromptDispatchUncertain(jobs,jobId,token,error,now=Date.now()) {
+export function markPromptDispatchUncertain(jobs,jobId,token,error,now=Date.now(),responseBaseline=null) {
   if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
   const job=findJob(jobs,jobId);
   if(!job) return errorResult("Prompt job was not found.");
@@ -223,7 +240,49 @@ export function markPromptDispatchUncertain(jobs,jobId,token,error,now=Date.now(
   const updated={
     ...job,
     status:"needs_review",
+    uncertaintyKind:"dispatch",
+    responseBaseline:responseBaseline&&typeof responseBaseline==="object"?responseBaseline:job.responseBaseline,
     lastError:String(error||"The send result could not be confirmed. Check the ChatGPT conversation before retrying.").slice(0,500),
+    updatedAt:now
+  };
+  return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
+}
+
+export function markPromptResponseUncertain(jobs,jobId,token,error,now=Date.now()) {
+  if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
+  const job=findJob(jobs,jobId);
+  if(!job) return errorResult("Prompt job was not found.");
+  if(job.status!=="awaiting_response"||job.currentToken!==token) {
+    return errorResult("Response uncertainty does not match the active prompt.");
+  }
+  if(!validTime(now)) return errorResult("Response uncertainty time is invalid.");
+
+  const updated={
+    ...job,
+    status:"needs_review",
+    uncertaintyKind:"response",
+    lastError:String(error||"Assistant completion could not be verified. Check the ChatGPT conversation.").slice(0,500),
+    updatedAt:now
+  };
+  return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
+}
+
+export function failPromptDispatch(jobs,jobId,token,error,now=Date.now()) {
+  if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
+  const job=findJob(jobs,jobId);
+  if(!job) return errorResult("Prompt job was not found.");
+  if(job.status!=="sending"||job.currentToken!==token) {
+    return errorResult("Prompt failure does not match the active send.");
+  }
+  if(!validTime(now)) return errorResult("Prompt failure time is invalid.");
+
+  const updated={
+    ...job,
+    status:"failed",
+    currentToken:null,
+    responseBaseline:null,
+    uncertaintyKind:null,
+    lastError:String(error||"The prompt was not sent.").slice(0,500),
     updatedAt:now
   };
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
@@ -237,10 +296,25 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
   if(!validTime(now)) return errorResult("Resolution time is invalid.");
 
   let updated;
-  if(decision==="confirm_sent") {
+  if(job.uncertaintyKind==="response") {
+    if(decision==="confirm_completed") {
+      const awaiting={...job,status:"awaiting_response",uncertaintyKind:null,lastError:""};
+      return completePromptResponse(replaceJob(jobs,awaiting),jobId,job.currentToken,now);
+    }
+    if(decision==="continue_waiting") {
+      updated={...job,status:"awaiting_response",uncertaintyKind:null,updatedAt:now,lastError:""};
+    } else if(decision==="stop_job") {
+      updated={...job,status:"stopped",currentToken:null,responseBaseline:null,uncertaintyKind:null,updatedAt:now,lastError:""};
+    } else if(decision==="confirm_failed") {
+      updated={...job,status:"failed",currentToken:null,responseBaseline:null,uncertaintyKind:null,updatedAt:now,lastError:"The current prompt response was marked failed after manual review."};
+    } else {
+      return errorResult("For a response review, choose confirm_completed, continue_waiting, stop_job or confirm_failed.");
+    }
+  } else if(decision==="confirm_sent") {
     updated={
       ...job,
       status:"awaiting_response",
+      uncertaintyKind:null,
       sentCount:job.sentCount+1,
       lastSentAt:now,
       updatedAt:now,
@@ -251,13 +325,15 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
       ...job,
       status:job.stopRequested?"stopped":job.pauseRequested?"paused":"queued",
       currentToken:null,
+      responseBaseline:null,
+      uncertaintyKind:null,
       pauseRequested:false,
       stopRequested:false,
       updatedAt:now,
       lastError:""
     };
   } else {
-    return errorResult("Choose confirm_sent or confirm_not_sent after checking the ChatGPT conversation.");
+    return errorResult("For an uncertain send, choose confirm_sent or confirm_not_sent after checking the ChatGPT conversation.");
   }
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
 }
