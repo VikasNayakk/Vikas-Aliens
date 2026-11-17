@@ -252,23 +252,26 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 
 ### Phase 4 — ChatGPT prompt automation (mandatory core capability)
 
-**Extension-only implementation note:** `prompt-scheduler.mjs` now contains a pure, tested prompt-job state model for finite / unlimited repeats, chronological dispatch selection, one active job per conversation, bounded parallel conversations, matching send/completion tokens, pause/resume/stop and uncertain-send review. This is a core module only; it is not yet connected to the service worker, a ChatGPT content script, or user interface.
+**Extension-only implementation status:** the scheduler state model, service-worker orchestration, ChatGPT page adapter, toolbar entry point and prompt-manager UI are now connected. Jobs persist in `chrome.storage.local`; the service worker enforces one active job per conversation and a maximum of three different conversations dispatched concurrently. Finite and unlimited jobs, per-job pause/resume/stop, manual uncertainty review, and worker-restart recovery are implemented and covered by unit tests.
+
+**Important verification boundary:** the ChatGPT page adapter uses composer / Send DOM controls and a conservative generation-state heuristic (new assistant message plus no visible generation signal and five seconds of stable content). This is not a server-confirmed completion signal. The extension has passed static / unit CI, but real Chrome + ChatGPT browser smoke tests have not been performed.
 
 - [ ] Add saved prompt templates with names, variables and enabled/disabled state.
-- [ ] Allow each prompt job to select one or more exact ChatGPT conversations.
-- [ ] Add finite repeat count and unlimited-until-stopped modes.
+- [x] Allow each prompt job to select one or more exact ChatGPT conversations.
+- [x] Add finite repeat count and unlimited-until-stopped modes.
 - [ ] Add repeat interval / dispatch policy configuration.
-- [ ] Persist job state, next prompt index and conversation identity.
-- [ ] Implement one serial queue and exclusive lock per conversation.
-- [ ] Allow independent conversation queues to run concurrently with a configurable limit.
-- [ ] Add ChatGPT content-script controls for prompt composer detection and safe send.
-- [ ] Add assistant-generation state detection and verify completion before next send.
-- [ ] Detect login, network, rate-limit, model-selection and page-error states.
-- [ ] Add pause, resume, stop and cancel-all controls.
-- [ ] Recover after tab reload or service-worker restart without duplicate prompt sends.
-- [ ] Add run history: prompt number, conversation, start/end, completion state and error.
-- [ ] Test identical prompts, empty prompts, very long prompts, failed sends and interrupted generations.
-- [ ] Add the requested ability to request a ChatGPT UI mode (for example Thinking) only when the current page exposes a verifiable control; otherwise ask the AI/user for a supported path and never pretend it was enabled.
+- [x] Persist job state, send token, response baseline, repeat counters and conversation identity.
+- [x] Implement one serial queue and exclusive lock per conversation.
+- [x] Allow independent conversation queues to run concurrently (maximum 3 by default).
+- [x] Add ChatGPT content-script controls for verified composer detection, prompt entry and explicit Send-button interaction.
+- [x] Add assistant-generation state observation and stable-response detection; live DOM behavior still requires browser verification.
+- [ ] Detect and guide recovery for login, network, rate-limit, model-selection and other page-error states.
+- [x] Add per-job pause, resume and stop controls, plus manual review for uncertain sends / responses.
+- [ ] Add a global cancel-all action.
+- [x] Recover persisted prompt jobs after service-worker wake, tab reload and tab closure without automatically retrying uncertain sends; browser integration testing remains pending.
+- [ ] Add detailed per-repeat run history (individual attempt timestamps and outcomes).
+- [ ] Complete the browser test matrix: identical prompts, empty / maximum-length prompts, failed sends, interrupted generation, navigation and worker restart.
+- [ ] Add the requested ability to request a ChatGPT UI mode (for example Thinking) only when the current page exposes a verifiable control; otherwise report that the mode is unavailable.
 
 ### Phase 5 — Teams task intake and approval inbox (BCE side)
 
@@ -344,25 +347,28 @@ The target product is much larger than the existing Voice Speakers release. Stat
 **Current verified baseline (2026-11-17):**
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
-- Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; 1 task remains.
-- BCE JavaScript / ES-module syntax validation: **passed** for all 16 `.js` / `.mjs` files in the audited folder.
-- BCE unit tests: **32 / 32 passed** (speech queue helpers, Teams payload and sender validation, privacy-safe fingerprints, stable group identity, and prompt scheduler state transitions).
-- Manifest V3 JSON and referenced-file validation: **passed** (4 active references checked).
+- Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
+- Phase 4 ChatGPT prompt automation: **9 of 16 implementation tasks complete (56%)**; browser smoke testing, repeat intervals, prompt templates, detailed run history, broader error recovery, global cancel-all and Thinking-mode control remain pending.
+- BCE JavaScript / ES-module syntax validation: **passed** for all 18 `.js` / `.mjs` files in the audited folder.
+- BCE unit tests: **41 / 41 passed**, including speech queue helpers, Teams message validation, stable group identity, prompt job state transitions, send / response uncertainty, and worker-restart recovery.
+- Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
+- Local HTML asset validation: **passed** (4 pages and their local script / stylesheet references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
 - Stable Teams group identity: **implemented and unit-tested**; adding a new group requires a conversation ID, duplicate display-name collisions are rejected, and old display-name-only saved groups require one manual remove/re-add.
+- Teams speech queue: **restart recovery and queue hydration are implemented and unit-tested**.
+- ChatGPT prompt manager: **extension-side UI and service-worker integration are implemented** for selected open conversations, finite / unlimited jobs, per-conversation serialization, three-way cross-conversation concurrency, per-job controls and manual uncertainty review.
+- ChatGPT page adapter: **registered and statically validated**; live DOM selectors and generation completion heuristic are **not yet verified in a real Chrome / ChatGPT session**.
+- Prompt-job worker recovery: **implemented and unit-tested**; a persisted send with uncertain outcome moves to manual review rather than being resent automatically.
 - Current-commit whitespace validation: **passed**.
-- Local developer command: **`npm run check` passed**; CI now runs this same command (no dependency installation required).
-- Privacy handling: **updated and source-aligned**; recent events and pending speech batches store message text locally, while fallback processed-message identifiers now use SHA-256 fingerprints.
-- Obsolete dedicated monitor-tab workflow: **removed**; last-five message reading remains on the current tab, and stale legacy monitor tabs still have cleanup handling.
-- Real Chrome / Teams browser smoke verification: **0%** (not run in this repository review).
+- Local developer command: **`npm run check` passed**; CI runs the same command without third-party dependencies.
+- Privacy and runtime documentation: **updated** for ChatGPT prompt storage, local page processing and current implementation limits.
+- Real Chrome / Teams / ChatGPT browser smoke verification: **0%** (not performed in this repository session).
 - BCE-side external-AI connector bridge: **0% implemented** (AI model, training and reasoning are outside this extension workstream).
-- ChatGPT prompt sending and finite / unlimited scheduling capability: **0% end-to-end implemented**.
-- ChatGPT prompt scheduler core: **implemented and unit-tested only**; actual page controls, send dispatch, assistant-completion detection, persisted service-worker integration and UI remain pending.
 - Teams task intake and approval UI: **0% implemented**.
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-There is no single weighted overall-product percentage yet; the feature groups have different scope and dependencies. The Phase 1 percentage is task-count based and is not a claim that the complete extension is 38% release-ready. A task is complete only when its code and acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
+There is no single weighted overall-product percentage yet; the feature groups have different scope and dependencies. Phase percentages are task-count based and are not claims that the complete extension is release-ready. A task is counted as complete only when its code and its automated acceptance check pass; live-browser behavior remains separately tracked. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 
