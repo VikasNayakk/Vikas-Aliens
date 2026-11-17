@@ -13,7 +13,8 @@ import {
   recoverPromptJobsAfterWorkerRestart,
   resolveUncertainPromptJob,
   resumePromptJob,
-  selectDispatchablePromptJobs
+  selectDispatchablePromptJobs,
+  requestStopAllPromptJobs
 } from "../prompt-scheduler.mjs";
 
 const makeJob=(overrides={},now=1000)=>createPromptJob({
@@ -303,4 +304,46 @@ test("counts every active job conservatively when persisted data repeats a conve
     makeJob({id:"queued-c",conversationId:"two"})
   ];
   assert.deepEqual(selectDispatchablePromptJobs(jobs,2),[]);
+});
+
+
+test("stop-all stops queued jobs and requests safe completion of active jobs", () => {
+  let jobs=[
+    makeJob({id:"queued",conversationId:"one"}),
+    {...makeJob({id:"paused",conversationId:"two"}),status:"paused"},
+    {...makeJob({id:"sending",conversationId:"three"}),status:"sending",currentToken:"t1"},
+    {...makeJob({id:"waiting",conversationId:"four"}),status:"awaiting_response",currentToken:"t2"},
+    {...makeJob({id:"review",conversationId:"five"}),status:"needs_review",currentToken:"t3"},
+    {...makeJob({id:"done",conversationId:"six"}),status:"completed"}
+  ];
+
+  const result=requestStopAllPromptJobs(jobs,2000);
+  assert.equal(result.ok,true);
+  assert.deepEqual(result.summary,{queuedStopped:2,activeStopRequested:2,reviewUnchanged:1});
+  assert.equal(result.jobs[0].status,"stopped");
+  assert.equal(result.jobs[1].status,"stopped");
+  assert.equal(result.jobs[2].status,"sending");
+  assert.equal(result.jobs[2].stopRequested,true);
+  assert.equal(result.jobs[3].status,"awaiting_response");
+  assert.equal(result.jobs[3].stopRequested,true);
+  assert.equal(result.jobs[4].status,"needs_review");
+  assert.equal(result.jobs[4].stopRequested,false);
+  assert.equal(result.jobs[5].status,"completed");
+});
+
+test("stop-all preserves active conversation locks until current work is resolved", () => {
+  const jobs=[
+    {...makeJob({id:"active",conversationId:"same"}),status:"awaiting_response",currentToken:"t1"},
+    makeJob({id:"queued-next",conversationId:"same"})
+  ];
+  const stopped=requestStopAllPromptJobs(jobs,2100);
+  assert.equal(stopped.jobs[0].stopRequested,true);
+  assert.deepEqual(selectDispatchablePromptJobs(stopped.jobs,3),[]);
+});
+
+test("stop-all rejects invalid input and timestamps without mutating source jobs", () => {
+  const jobs=[makeJob()];
+  assert.equal(requestStopAllPromptJobs(null,2000).ok,false);
+  assert.equal(requestStopAllPromptJobs(jobs,-1).ok,false);
+  assert.equal(jobs[0].status,"queued");
 });
