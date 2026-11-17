@@ -38,6 +38,19 @@ function normalizeAudioUrl(value) {
 export function normalizeTeamsLiveMessage(payload) {
   if(!payload||typeof payload!=="object"||Array.isArray(payload)) return null;
 
+  for(const [field,maxLength] of Object.entries(LIMITS)) {
+    const value=payload[field];
+    if(value!=null&&(typeof value!=="string"||value.length>maxLength)) return null;
+  }
+  if(payload.isReply!=null&&typeof payload.isReply!=="boolean") return null;
+  if(
+    payload.timestamp!=null &&
+    typeof payload.timestamp!=="string" &&
+    typeof payload.timestamp!=="number"
+  ) return null;
+  if(typeof payload.timestamp==="number"&&!Number.isFinite(payload.timestamp)) return null;
+  if(typeof payload.timestamp==="string"&&payload.timestamp.length>LIMITS.messageTimestamp) return null;
+
   const groupKey=normalizeGroupKey(payload.groupKey);
   const groupName=boundedString(payload.groupName,LIMITS.groupName);
   const sender=boundedString(payload.sender,LIMITS.sender);
@@ -50,10 +63,6 @@ export function normalizeTeamsLiveMessage(payload) {
   const audioUrl=normalizeAudioUrl(payload.audioUrl);
 
   if(!groupKey||!sender) return null;
-  if(payload.text!=null&&typeof payload.text!=="string") return null;
-  if(typeof payload.groupKey!=="string"||typeof payload.sender!=="string") return null;
-  if(payload.audioUrl!=null&&typeof payload.audioUrl!=="string") return null;
-  if(payload.audioRef!=null&&typeof payload.audioRef!=="string") return null;
   if(payload.audioUrl&&audioUrl===null) return null;
   if(rawAudioRef&&!/^[A-Za-z0-9_-]+$/.test(rawAudioRef)) return null;
   if(!text&&!rawAudioRef&&!audioUrl) return null;
