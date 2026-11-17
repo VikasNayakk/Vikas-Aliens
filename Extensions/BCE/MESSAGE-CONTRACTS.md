@@ -102,19 +102,19 @@ Payload fields:
 The service worker validates the payload through `message-contracts.mjs` before doing any queue work. The validator:
 - requires a string sender and a normalized group key;
 - rejects non-string or oversized text / routing fields (message text is limited to 50,000 characters);
-- accepts only HTTP(S) audio URLs or blob URLs with an HTTP(S) origin;
+- accepts only HTTPS audio URLs or blob URLs with an HTTPS origin;
 - restricts audio references to a safe alphanumeric / underscore / hyphen format;
 - requires message text or a valid audio source.
 
-The service worker also checks the originating tab URL against the allowed Teams hosts and verifies the group is currently selected. Invalid messages are ignored and are not persisted.
+The service worker also checks that the originating tab URL is exactly an allowed Teams host and verifies the group is currently selected. Audio completion and status events are subject to the same Teams-tab origin check. Invalid messages are ignored and are not persisted.
 
 ### `TEAMS_LIVE_STATUS`
 
 Payload:
 - `running?: boolean`
-- `text: string`
+- `text: string` (limited to 500 characters)
 
-This updates the service-worker status string. It is informational only and must not be treated as an execution acknowledgement.
+The message is accepted only from a verified Teams tab. It updates the service-worker status string and is informational only; it must not be treated as an execution acknowledgement.
 
 ### `TEAMS_AUDIO_ENDED` / `TEAMS_AUDIO_FAILED`
 
@@ -122,7 +122,7 @@ Payload:
 - `playbackId: string`
 - `error?: string` (for failed playback)
 
-The `playbackId` must match the currently active persisted audio item. Stale completion events must be ignored.
+The sender must be a verified Teams tab, and `playbackId` must be a string of at most 128 characters matching the currently active persisted audio item. Stale completion events must be ignored.
 
 ## 4. Service worker → Popup
 
