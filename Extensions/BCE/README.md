@@ -37,4 +37,22 @@ This browser-only mode watches Teams in-app notification cards in an open Teams 
 - No API key is needed for conversation loading or speech playback.
 - Existing optional AI analysis settings remain available in the extension settings page.
 
+## Development checks
 
+No npm package installation is required. Use Node.js 22 or later.
+
+From this folder, run:
+
+```bash
+npm run check
+```
+
+This validates JavaScript / ES-module syntax, the Manifest V3 declaration, local files referenced by the manifest and active HTML pages, and the BCE unit tests.
+
+To run only the unit tests:
+
+```bash
+npm test
+```
+
+GitHub Actions runs the same `npm run check` command for changes to the BCE extension.
