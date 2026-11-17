@@ -116,10 +116,6 @@
     }
     return "";
   }
-  function monitorUrl(chatId){
-    if(!chatId) return "";
-    return "https://teams.microsoft.com/l/chat/"+encodeURIComponent(chatId)+"/conversations";
-  }
   function groupKey(){return normalize(groupName());}
 
   function countBodies(root){
@@ -314,29 +310,6 @@
       });
     });
     return {messages,itemCount:items.length};
-  }
-  function chatInfo(){
-    const name=groupName(),key=normalize(name),chatId=conversationChatId();
-    const root=findRoot();
-    const data=root?extract(root.node):{messages:[],itemCount:0};
-    const url=monitorUrl(chatId);
-    const error=!name
-      ?"Teams group name could not be detected."
-      :!root
-        ?"Open the group chat so its messages are visible."
-        :!chatId
-          ?"Teams chat ID could not be read from message links. Open a message's More options > Copy link once, then retry."
-          :"";
-    return {
-      ok:!!name&&!!root&&!!chatId,
-      groupName:name,
-      groupKey:key,
-      chatId,
-      monitorUrl:url,
-      baselineCount:data.messages.length,
-      itemCount:data.itemCount,
-      error
-    };
   }
   function stop(){
     state.running=false;
@@ -555,11 +528,6 @@
       const chatId=conversationChatId();
       const error=!name?"Teams group name could not be detected.":!root?"Open the group chat so its messages are visible.":"";
       sendResponse({ok:!!name&&!!root,groupName:name,groupKey:key,chatId,baselineCount:batch.messages.length,error});
-      return true;
-    }
-    if(message?.type==="TEAMS_GET_CHAT_INFO_V16"){
-      const info=chatInfo();
-      sendResponse(info);
       return true;
     }
     if(message?.type==="TEAMS_READ_LAST_FIVE_V16"){
