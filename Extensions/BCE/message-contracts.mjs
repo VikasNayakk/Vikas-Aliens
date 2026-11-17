@@ -29,8 +29,8 @@ function normalizeAudioUrl(value) {
   if(!raw) return "";
   try {
     const url=new URL(raw);
-    if(url.protocol==="https:"||url.protocol==="http:") return url.href;
-    if(url.protocol==="blob:"&&/^https?:$/.test(new URL(url.pathname).protocol)) return url.href;
+    if(url.protocol==="https:") return url.href;
+    if(url.protocol==="blob:"&&new URL(url.pathname).protocol==="https:") return url.href;
   } catch (_) {}
   return null;
 }
@@ -85,4 +85,11 @@ export function normalizeTeamsLiveMessage(payload) {
     audioRef:rawAudioRef,
     audioUrl:audioUrl||""
   };
+}
+
+export function isTeamsContentSender(sender) {
+  const tabId=sender?.tab?.id;
+  const sourceUrl=sender?.url||sender?.tab?.url||"";
+  return Number.isInteger(tabId) &&
+    /^https:\/\/(?:teams\.cloud\.microsoft|teams\.microsoft)\.com\//i.test(sourceUrl);
 }
