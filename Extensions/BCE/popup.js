@@ -65,6 +65,10 @@ async function refresh(){
   catch(error){$("status").textContent="Could not load status: "+error.message;}
 }
 
+$("openPromptManager").addEventListener("click",()=>{
+  chrome.tabs.create({url:chrome.runtime.getURL("prompt-manager.html")});
+});
+
 $("power").addEventListener("click",async()=>{
   const next=$("power").getAttribute("aria-pressed")!=="true";
   $("power").disabled=true;
