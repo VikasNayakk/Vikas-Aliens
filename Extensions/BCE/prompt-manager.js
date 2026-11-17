@@ -32,8 +32,8 @@ function renderTemplateVariables(){
   const previous=new Map([...root.querySelectorAll("[data-template-variable]")].map(input=>[input.dataset.templateVariable,input.value]));
   root.replaceChildren();
   const content=$("templateContent").value;
-  const variables=[...new Set([...content.matchAll(/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g)].map(match=>match[1]))];
-  const residue=content.replace(/{{\\s*[A-Za-z][A-Za-z0-9_]{0,39}\\s*}}/g,"");
+  const variables=[...new Set([...content.matchAll(/{{\s*([A-Za-z][A-Za-z0-9_]{0,39})\s*}}/g)].map(match=>match[1]))];
+  const residue=content.replace(/{{\s*[A-Za-z][A-Za-z0-9_]{0,39}\s*}}/g,"");
   const malformed=residue.includes("{{")||residue.includes("}}");
   $("templateVariableSummary").textContent=malformed
     ?"Invalid variable syntax"
@@ -105,12 +105,12 @@ function templateValues(){
 }
 function renderTemplateToPrompt(){
   const content=$("templateContent").value;
-  const variables=[...new Set([...content.matchAll(/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g)].map(match=>match[1]))];
-  const residue=content.replace(/{{\\s*[A-Za-z][A-Za-z0-9_]{0,39}\\s*}}/g,"");
+  const variables=[...new Set([...content.matchAll(/{{\s*([A-Za-z][A-Za-z0-9_]{0,39})\s*}}/g)].map(match=>match[1]))];
+  const residue=content.replace(/{{\s*[A-Za-z][A-Za-z0-9_]{0,39}\s*}}/g,"");
   if(residue.includes("{{")||residue.includes("}}")) throw new Error("Use variable format {{variable_name}} with a letter first.");
   if(!content.trim()) throw new Error("Template prompt cannot be empty.");
   const values=templateValues();
-  const rendered=content.replace(/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g,(_,name)=>{
+  const rendered=content.replace(/{{\s*([A-Za-z][A-Za-z0-9_]{0,39})\s*}}/g,(_,name)=>{
     if(!Object.prototype.hasOwnProperty.call(values,name)) throw new Error("Enter a value for template variable: "+name);
     return values[name];
   });
