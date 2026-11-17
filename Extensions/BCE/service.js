@@ -1,5 +1,6 @@
 import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
 import {appendUniqueMessages,countPendingSpeechMessages,normalizeSpeechBatch} from "./speech-queue.mjs";
+import {normalizeTeamsLiveMessage} from "./message-contracts.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
 async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
@@ -643,6 +644,10 @@ async function wasMessageProcessed(messageKey){
   return false;
 }
 async function onTeamsMessage(message,sender) {
+  const normalizedMessage=normalizeTeamsLiveMessage(message);
+  if(!normalizedMessage) return;
+  message=normalizedMessage;
+
   const enabled=await chrome.storage.local.get(TEAMS_LIVE_KEY);
   if(!enabled[TEAMS_LIVE_KEY]) return;
   const groupKey=String(message.groupKey||"");
