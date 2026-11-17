@@ -288,6 +288,28 @@ export function failPromptDispatch(jobs,jobId,token,error,now=Date.now()) {
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
 }
 
+export function recoverPromptJobsAfterWorkerRestart(jobs,now=Date.now()) {
+  if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
+  if(!validTime(now)) return errorResult("Recovery time is invalid.");
+
+  let recovered=jobs.slice();
+  const recoveredJobIds=[];
+  for(const job of jobs) {
+    if(job?.status!=="sending"||!job.currentToken) continue;
+    const result=markPromptDispatchUncertain(
+      recovered,
+      job.id,
+      job.currentToken,
+      "The extension worker restarted while a prompt send was in progress. Check ChatGPT before deciding whether it was sent.",
+      now
+    );
+    if(!result.ok) return result;
+    recovered=result.jobs;
+    recoveredJobIds.push(job.id);
+  }
+  return {ok:true,jobs:recovered,recoveredJobIds};
+}
+
 export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
   if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
   const job=findJob(jobs,jobId);
