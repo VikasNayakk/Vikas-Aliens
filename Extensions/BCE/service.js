@@ -275,9 +275,10 @@ async function addCurrentGroup() {
   const resolved=resolveTeamsGroupIdentity(groups,info,tab.id);
   if(!resolved.ok) throw new Error(resolved.error);
 
-  const existingIndex=info.chatId
-    ? groups.findIndex(item=>item.chatId===info.chatId)
-    : groups.findIndex(item=>item.key===info.groupKey);
+  const existingIndex=groups.findIndex(item=>
+    (info.chatId&&item.chatId===info.chatId) ||
+    (item.key===info.groupKey&&(!info.chatId||!item.chatId))
+  );
   let group=resolved.group;
   if(existingIndex>=0) {
     group={...groups[existingIndex],...resolved.group};
