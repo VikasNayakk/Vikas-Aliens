@@ -116,7 +116,8 @@ async function getChatGPTTabInfo(tabId) {
     title:String(info.title||"ChatGPT conversation").slice(0,180),
     url:tab.url,
     composerAvailable:info.composerAvailable===true,
-    sendAvailable:info.sendAvailable===true
+    sendAvailable:info.sendAvailable===true,
+    generating:info.generating===true
   };
 }
 async function listChatGPTConversations() {
@@ -250,6 +251,9 @@ async function createChatGPTPromptJob(request) {
   if(!info.composerAvailable||!info.sendAvailable) {
     throw new Error("The selected conversation does not currently expose a usable prompt composer and Send control.");
   }
+  if(info.generating) {
+    throw new Error("ChatGPT is already generating a response in this conversation. Wait for it to finish before creating a prompt job.");
+  }
 
   const result=await mutatePromptJobs(jobs=>{
     const active=jobs.filter(job=>!["completed","stopped","failed"].includes(job.status)).length;
@@ -263,8 +267,10 @@ async function createChatGPTPromptJob(request) {
       prompt,
       repeatLimit
     });
-    const retained=jobs.filter(item=>!["completed","stopped","failed"].includes(item.status)||
-      Date.now()-item.updatedAt<30*24*60*60*1000).slice(-200);
+    const activeJobs=jobs.filter(item=>!["completed","stopped","failed"].includes(item.status));
+    const recentTerminal=jobs.filter(item=>["completed","stopped","failed"].includes(item.status)&&
+      Date.now()-item.updatedAt<30*24*60*60*1000).slice(-150);
+    const retained=[...activeJobs,...recentTerminal];
     return {ok:true,jobs:[...retained,job],job};
   });
   if(!result?.ok) throw new Error(result?.error||"Could not create the prompt job.");
@@ -291,7 +297,7 @@ async function mutatePromptJob(jobId,action,decision) {
     dispatchPromptJobs().catch(()=>{});
   } else if(action==="resolve"&&result.job.status==="awaiting_response") {
     await startPromptResponseMonitor(result.job);
-  } else if(action==="resolve"&&["stopped","failed","queued"].includes(result.job.status)) {
+  } else if(action==="resolve"&&["completed","stopped","failed","queued"].includes(result.job.status)) {
     try { await sendChatGPTTabMessage(result.job.tabId,{type:"CHATGPT_STOP_RESPONSE_MONITOR",jobId}); } catch (_) {}
     if(result.job.status==="queued") dispatchPromptJobs().catch(()=>{});
   } else if(action==="resume") {
