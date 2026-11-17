@@ -318,7 +318,19 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
   if(!validTime(now)) return errorResult("Resolution time is invalid.");
 
   let updated;
-  if(job.uncertaintyKind==="response") {
+  if(job.uncertaintyKind!=="response"&&decision==="stop_job") {
+    updated={
+      ...job,
+      status:"stopped",
+      currentToken:null,
+      responseBaseline:null,
+      uncertaintyKind:null,
+      pauseRequested:false,
+      stopRequested:false,
+      updatedAt:now,
+      lastError:""
+    };
+  } else if(job.uncertaintyKind==="response") {
     if(decision==="confirm_completed") {
       const awaiting={...job,status:"awaiting_response",uncertaintyKind:null,lastError:""};
       return completePromptResponse(replaceJob(jobs,awaiting),jobId,job.currentToken,now);
