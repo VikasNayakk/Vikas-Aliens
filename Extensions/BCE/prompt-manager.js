@@ -280,7 +280,7 @@ function renderRunHistory(job){
     const fields=[
       ["Started",formatRunTimestamp(run.startedAt)],
       ["Send confirmed",formatRunTimestamp(run.sendConfirmedAt)],
-      ["Completed / reviewed",formatRunTimestamp(run.completedAt??run.uncertainAt??run.resolvedAt)],
+      ["Completed / reviewed",formatRunTimestamp(run.completedAt??run.resolvedAt??run.uncertainAt)],
       ["Duration",formatRunDuration(run.durationMs)]
     ];
     fields.forEach(([label,value])=>{

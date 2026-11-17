@@ -514,6 +514,7 @@ test("records response uncertainty and its manual resolution",()=>{
   const continued=resolveUncertainPromptJob(jobs,"job-a","continue_waiting",4500);
   assert.equal(continued.job.runHistory[0].outcome,"awaiting_response");
   assert.equal(continued.job.runHistory[0].resolution,"Owner chose to continue waiting.");
+  assert.equal(continued.job.runHistory[0].durationMs,null);
   jobs=markPromptResponseUncertain(continued.jobs,"job-a","response-token","Still uncertain.",5000).jobs;
   const stopped=resolveUncertainPromptJob(jobs,"job-a","stop_job",5100);
   assert.equal(stopped.job.runHistory[0].outcome,"stopped_after_review");

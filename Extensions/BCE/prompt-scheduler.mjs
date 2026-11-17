@@ -452,7 +452,7 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
       updated={
         ...job,
         status:"awaiting_response",
-        runHistory:updateLatestPromptRun(job,{outcome:"awaiting_response",resolution:"Owner chose to continue waiting.",resolvedAt:now,error:""}),
+        runHistory:updateLatestPromptRun(job,{outcome:"awaiting_response",resolution:"Owner chose to continue waiting.",resolvedAt:now,durationMs:null,error:""}),
         uncertaintyKind:null,updatedAt:now,lastError:""
       };
     } else if(decision==="stop_job") {
@@ -483,7 +483,7 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
     updated={
       ...job,
       status:"awaiting_response",
-      runHistory:updateLatestPromptRun(job,{sendConfirmedAt:now,outcome:"awaiting_response",resolution:"Owner confirmed the prompt was sent.",resolvedAt:now,error:""}),
+      runHistory:updateLatestPromptRun(job,{sendConfirmedAt:now,outcome:"awaiting_response",resolution:"Owner confirmed the prompt was sent.",resolvedAt:now,durationMs:null,error:""}),
       uncertaintyKind:null,
       sentCount:job.sentCount+1,
       lastSentAt:now,
