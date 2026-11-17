@@ -368,7 +368,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-There is no single weighted overall-product percentage yet; the feature groups have different scope and dependencies. Phase percentages are task-count based and are not claims that the complete extension is release-ready. A task is counted as complete only when its code and its automated acceptance check pass; live-browser behavior remains separately tracked. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
+A simple task-count meter (equal weight per checklist item across Phases 0–8) is **27 / 96 complete (28.1%) and 69 / 96 pending (71.9%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 
