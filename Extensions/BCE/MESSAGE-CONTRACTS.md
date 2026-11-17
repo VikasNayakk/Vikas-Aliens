@@ -149,6 +149,43 @@ The popup listens for this broadcast and re-renders its groups, counters and sta
 
 The speech queue phase values currently used are `group`, `gap`, `message` and `audio`. The current batch also stores `messageIndex`, `sequence` and `playbackId` where relevant.
 
+## 6. ChatGPT prompt scheduler message contracts
+
+### Extension UI → Service worker
+
+| Message type | Request fields | Response |
+|---|---|---|
+| `GET_CHATGPT_CONVERSATIONS` | None | `{ ok, conversations[] }`; one row per unique conversation ID |
+| `GET_CHATGPT_PROMPT_JOBS` | None | `{ ok, jobs[] }` |
+| `CREATE_CHATGPT_PROMPT_JOB` | `tabId: number, prompt: string, repeatLimit: positive integer or null` | `{ ok, job, state }` |
+| `PAUSE_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
+| `STOP_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
+| `RESUME_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
+| `RESOLVE_CHATGPT_PROMPT_JOB` | `jobId: string, decision: string` | `{ ok, job, state }` |
+
+A repeat limit of `null` means unlimited until the owner stops the job. A finite job completes only after the configured number of assistant responses has been accepted by the completion monitor. The service worker permits at most three different conversations to be dispatched concurrently and locks each conversation while a job is `sending`, `awaiting_response` or `needs_review`.
+
+### Service worker → ChatGPT content script
+
+| Message type | Request fields | Response |
+|---|---|---|
+| `CHATGPT_GET_CONVERSATION_INFO` | None | `{ ok, conversationId, title, url, composerAvailable, sendAvailable, generating, assistantMessageCount }` |
+| `CHATGPT_SEND_PROMPT` | `jobId, token, conversationId, prompt` | `{ ok, baseline }`, or an explicit failure / uncertain result |
+| `CHATGPT_START_RESPONSE_MONITOR` | `jobId, token, conversationId, baseline, prompt` | `{ ok, monitoring }` |
+| `CHATGPT_STOP_RESPONSE_MONITOR` | `jobId` | `{ ok:true }` |
+
+### ChatGPT content script → Service worker
+
+- `CHATGPT_TAB_READY`: `conversationId, title, url, composerAvailable, sendAvailable`. Accepted only from a top-level allowed ChatGPT tab, with the conversation ID checked against the sender URL.
+- `CHATGPT_RESPONSE_COMPLETED`: `jobId, token, conversationId, completedAt, responseLength`. Accepted only when tab ID, conversation ID, token and active job state all match.
+- `CHATGPT_RESPONSE_UNCERTAIN`: `jobId, token, conversationId, reason`. Moves the matching active response to manual review; it does not trigger an automatic resend.
+
+The response baseline stores message counts, DOM keys, fingerprints and lengths—not the assistant's full response text. The content script determines generation completion from observed page controls and a stable new assistant message. This is a DOM heuristic, not a server-confirmed completion event.
+
+### Prompt job storage
+
+`chatgptPromptJobs` stores the prompt text, conversation / tab identity, finite or unlimited repeat limit, sent and completed counters, current send token, response baseline, pause / stop flags, status, timestamps and bounded error details. Data remains in Chrome extension local storage and is not encrypted by BCE.
+
 ## 6. Existing but inactive / legacy message paths
 
 These paths are not part of the active popup workflow:
