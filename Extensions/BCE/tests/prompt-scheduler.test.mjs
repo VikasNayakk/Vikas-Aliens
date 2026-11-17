@@ -558,4 +558,3 @@ test("manual failed-response resolution records a failed outcome and review time
   assert.equal(result.job.runHistory[0].resolvedAt,2500);
   assert.equal(result.job.runHistory[0].durationMs,1400);
 });
-
