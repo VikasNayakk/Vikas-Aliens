@@ -365,7 +365,7 @@ async function readLastFive(groupKey) {
   return publishLiveState();
 }
 
-async function hydrateSpeechQueue() {
+async function hydrateSpeechQueue(options={}) {
   if(speechQueueLoaded) return;
   const saved=await chrome.storage.local.get([TEAMS_LIVE_KEY,"teamsSpeechQueue","teamsSpeechCurrent"]);
   speechQueue=(Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue:[])
@@ -374,6 +374,14 @@ async function hydrateSpeechQueue() {
   speechQueueLoaded=true;
 
   if(!saved[TEAMS_LIVE_KEY]) return;
+
+  // If the event that woke the service worker is the completion signal for
+  // the persisted audio item, consume that signal instead of replaying it.
+  if(
+    speechCurrent?.phase==="audio" &&
+    options.completedPlaybackId &&
+    options.completedPlaybackId===speechCurrent.playbackId
+  ) return;
 
   if(speechCurrent?.phase==="gap") {
     const sequence=speechCurrent.sequence;
@@ -644,6 +652,7 @@ async function stopTeamsAudio(){
   }
 }
 async function handleAudioPlaybackEvent(message){
+  await hydrateSpeechQueue({completedPlaybackId:String(message.playbackId||"")});
   if(!speechCurrent||speechCurrent.phase!=="audio"||speechCurrent.playbackId!==message.playbackId) return;
   if(message.type==="TEAMS_AUDIO_FAILED") await setStatus(message.error||"Teams audio playback failed.");
   scheduleNextMessage(350);
