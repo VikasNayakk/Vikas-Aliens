@@ -213,6 +213,8 @@ function renderJobs(){
   $("queuedCount").textContent=String(queued);
   $("activeCount").textContent=String(active);
   $("reviewCount").textContent=String(review);
+  const cancellable=jobs.some(job=>["queued","paused","sending","awaiting_response"].includes(job.status));
+  $("cancelAllJobs").disabled=!cancellable;
   if(!jobs.length){
     const empty=document.createElement("div");
     empty.className="pm-empty";
@@ -268,6 +270,26 @@ $("selectAll").addEventListener("change",()=>{
 });
 $("refreshConversations").addEventListener("click",refreshConversations);
 $("refreshJobs").addEventListener("click",refreshJobs);
+$("cancelAllJobs").addEventListener("click",async()=>{
+  const cancellable=jobs.filter(job=>["queued","paused","sending","awaiting_response"].includes(job.status)).length;
+  if(!cancellable) return;
+  if(!window.confirm("Stop all "+cancellable+" cancellable prompt job(s)? Queued jobs will stop immediately. Active responses will be allowed to finish, then their repeats will stop. Jobs needing manual review will remain locked until resolved.")) return;
+  const button=$("cancelAllJobs");
+  button.disabled=true;
+  try{
+    const result=await request("STOP_ALL_CHATGPT_PROMPT_JOBS");
+    await refreshJobs();
+    const summary=result.summary||{};
+    messageStatus(
+      "Cancel-all applied: "+(summary.queuedStopped||0)+" queued job(s) stopped; "+
+      (summary.activeStopRequested||0)+" active job(s) will stop after the current response; "+
+      (summary.reviewUnchanged||0)+" job(s) still need manual review."
+    );
+  }catch(error){
+    messageStatus(error.message,true);
+    await refreshJobs();
+  }
+});
 $("createJobs").addEventListener("click",async()=>{
   const prompt=$("promptText").value.trim();
   const tabIds=[...selectedTabs];
