@@ -12,6 +12,7 @@ import {
   markPromptResponseUncertain,
   requestPromptPause,
   requestPromptStop,
+  recoverPromptJobsAfterWorkerRestart,
   resolveUncertainPromptJob,
   resumePromptJob,
   selectDispatchablePromptJobs
@@ -368,14 +369,11 @@ async function ensurePromptRuntimeRecovered() {
   const recovery=(async()=>{
     // A persisted "sending" state has no reliable proof that the page accepted
     // the prompt. Never retry it automatically after a worker restart.
-    const jobs=await getStoredPromptJobs();
-    for(const job of jobs) {
-      if(job.status==="sending"&&job.currentToken) {
-        await mutatePromptJobs(current=>markPromptDispatchUncertain(
-          current,job.id,job.currentToken,
-          "The extension worker restarted while a prompt send was in progress. Check ChatGPT before deciding whether it was sent."
-        ));
-      }
+    const recoveryResult=await mutatePromptJobs(jobs=>
+      recoverPromptJobsAfterWorkerRestart(jobs)
+    );
+    if(!recoveryResult?.ok) {
+      throw new Error(recoveryResult?.error||"Could not recover persisted ChatGPT prompt jobs.");
     }
 
     const refreshed=await getStoredPromptJobs();
