@@ -151,11 +151,11 @@ The speech queue phase values currently used are `group`, `gap`, `message` and `
 
 ## 6. Existing but inactive / legacy message paths
 
-These names exist in old or currently unwired code and must not be assumed to be part of the active popup workflow:
+These paths are not part of the active popup workflow:
 
-- `OPEN_SIDE_PANEL`: handled by `background.js`, which is not the manifest service worker.
-- `TEAMS_GET_CHAT_INFO_V16`: used by old monitor-tab helper functions; those helper functions are not called by the active group-registration flow.
-- The old `ui.js` Teams reader has a separate page-level monitor implementation and should not be run alongside the active `service.js` + `teams-content.js` pipeline.
+- `OPEN_SIDE_PANEL`: the handler remains in `background.js`, which is not the manifest service worker.
+- The old `ui.js` Teams reader contains a separate page-level monitoring implementation and must not run alongside the active `service.js` + `teams-content.js` pipeline.
+- The former `TEAMS_GET_CHAT_INFO_V16` message and dedicated monitor-tab creation / restoration helpers have been removed. Legacy `monitorTabId` values are only checked to close stale tabs during migration or group removal; BCE no longer creates dedicated Teams monitor tabs.
 
 Before reconnecting any legacy UI, first choose one authoritative Teams message pipeline and migrate its state deliberately. Do not activate both pipelines in parallel.
 
