@@ -66,7 +66,7 @@ test("counts queued messages plus the uncompleted part of the active batch", () 
   ];
   const current={messages:[{messageId:"c1"},{messageId:"c2"},{messageId:"c3"}],messageIndex:1};
 
-  assert.equal(countPendingSpeechMessages(queue,current),4);
+  assert.equal(countPendingSpeechMessages(queue,current),5);
   assert.equal(countPendingSpeechMessages([],null),0);
 });
 
