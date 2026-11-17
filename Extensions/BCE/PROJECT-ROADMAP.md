@@ -252,6 +252,8 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 
 ### Phase 4 — ChatGPT prompt automation (mandatory core capability)
 
+**Extension-only implementation note:** `prompt-scheduler.mjs` now contains a pure, tested prompt-job state model for finite / unlimited repeats, chronological dispatch selection, one active job per conversation, bounded parallel conversations, matching send/completion tokens, pause/resume/stop and uncertain-send review. This is a core module only; it is not yet connected to the service worker, a ChatGPT content script, or user interface.
+
 - [ ] Add saved prompt templates with names, variables and enabled/disabled state.
 - [ ] Allow each prompt job to select one or more exact ChatGPT conversations.
 - [ ] Add finite repeat count and unlimited-until-stopped modes.
@@ -343,8 +345,8 @@ The target product is much larger than the existing Voice Speakers release. Stat
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; 1 task remains.
-- BCE JavaScript / ES-module syntax validation: **passed** for all 14 `.js` / `.mjs` files in the audited folder.
-- BCE unit tests: **19 / 19 passed** (speech queue helpers, Teams message payload validation / sender trust, privacy-safe message fingerprints and stable group identity / legacy migration decisions).
+- BCE JavaScript / ES-module syntax validation: **passed** for all 16 `.js` / `.mjs` files in the audited folder.
+- BCE unit tests: **32 / 32 passed** (speech queue helpers, Teams payload and sender validation, privacy-safe fingerprints, stable group identity, and prompt scheduler state transitions).
 - Manifest V3 JSON and referenced-file validation: **passed** (4 active references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
 - Stable Teams group identity: **implemented and unit-tested**; adding a new group requires a conversation ID, duplicate display-name collisions are rejected, and old display-name-only saved groups require one manual remove/re-add.
@@ -354,7 +356,8 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Obsolete dedicated monitor-tab workflow: **removed**; last-five message reading remains on the current tab, and stale legacy monitor tabs still have cleanup handling.
 - Real Chrome / Teams browser smoke verification: **0%** (not run in this repository review).
 - BCE-side external-AI connector bridge: **0% implemented** (AI model, training and reasoning are outside this extension workstream).
-- ChatGPT prompt sending and finite / unlimited scheduling: **0% implemented**.
+- ChatGPT prompt sending and finite / unlimited scheduling capability: **0% end-to-end implemented**.
+- ChatGPT prompt scheduler core: **implemented and unit-tested only**; actual page controls, send dispatch, assistant-completion detection, persisted service-worker integration and UI remain pending.
 - Teams task intake and approval UI: **0% implemented**.
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
