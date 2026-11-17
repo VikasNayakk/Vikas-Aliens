@@ -42,16 +42,10 @@ export function resolveTeamsGroupIdentity(groups, info, tabId) {
   }
 
   if(chatId&&byName&&!byName.chatId&&byName!==byChatId) {
-    const knownTabs=[
-      ...(Array.isArray(byName.tabIds)?byName.tabIds:[]),
-      byName.lastAddedTabId
-    ];
-    if(!knownTabs.includes(tabId)) {
-      return {
-        ok:false,
-        error:"A saved group with this name has no stable conversation ID. Remove that saved group and add this chat again to avoid merging two different conversations."
-      };
-    }
+    return {
+      ok:false,
+      error:"This saved group predates stable conversation IDs. Remove it and add this chat again; a saved tab ID cannot prove that the tab still contains the original conversation."
+    };
   }
 
   const existing=byChatId||byName;
