@@ -6,7 +6,9 @@
 **Audited baseline commit:** `90ab495c811e01d068f3996a83feff2d7e23a424`  
 **Existing extension version:** `1.6.3`  
 **Audit date:** 2026-11-17  
-**Status:** Initial static audit and requirements backlog recorded. No runtime code changed in this commit.
+**Status:** Initial static audit and requirements backlog recorded. Extension-only work is in scope in this conversation.
+
+**Conversation scope boundary:** This engineering thread owns BCE extension code only. The AI model, training, reasoning/backend and autonomous AI decision engine are being developed separately and are out of scope here. BCE work may define and implement only the extension-side connector, message contracts, permissions, execution controls and UI needed to connect to that separately developed AI.
 
 ---
 
@@ -128,16 +130,19 @@ User / Teams / Scheduled trigger
        Task Intake Layer
              │
              ▼
-       AI Decision Router
-        ┌────┴────┐
-        │         │
-   Small action  Workflow lookup
-        │         │
-        ▼         ▼
- Capability     Workflow Registry
- Catalog            │
-        │           ▼
-        └────► Workflow Executor
+       External AI service
+       (separate workstream)
+             │ typed task decision
+             ▼
+       BCE integration bridge
+             │
+       Capability / Workflow lookup
+             │
+             ▼
+       Workflow Registry
+             │
+             ▼
+       Workflow Executor
                     │
              Permission / Policy Gate
                     │
@@ -156,13 +161,14 @@ Separate controlled lanes:
 ### Responsibilities and boundaries
 
 - **Task Intake:** receives user instructions, Teams messages and approved future triggers. It records source, time, target app and original message reference.
-- **AI Decision Router:** interprets intent, asks for missing details, selects a registered capability/workflow, and explains uncertainty. It proposes actions; it does not directly execute arbitrary generated code.
-- **Capability Catalog:** describes the small operations BCE can perform directly, including required page, inputs, permissions, expected result and risk level.
+- **External AI service:** the model, reasoning, training and AI decision-making are implemented in a separate workstream. BCE only exchanges typed task/context messages with that service; this conversation does not implement the AI itself.
+- **BCE AI Integration Bridge:** sends permitted context to the external AI and validates the structured response before handing a proposal to the extension policy gate. It does not contain model logic.
+- **BCE Capability Catalog:** describes the small extension operations that can be invoked by an approved external-AI decision, including required page, typed inputs, permissions, expected result and risk level.
 - **Workflow Registry:** stores workflow ID, version, application, input schema, steps reference, permission scope, test status and compatibility requirements.
 - **Workflow Executor:** deterministically executes a validated workflow, verifies preconditions/postconditions, applies timeouts/retries where safe, and reports each step.
 - **Policy / Approval Gate:** blocks unapproved, destructive, externally visible or high-impact actions.
 - **ChatGPT Prompt Scheduler:** independent queue manager with one lock per conversation, completion detection, finite/unlimited repeat state and explicit stop control.
-- **Workflow Authoring Pipeline:** turns a missing workflow into a requirements brief, generated implementation, tests and review/publish process.
+- **BCE Workflow Intake / Validation:** accepts a workflow package produced by the separate AI/authoring workstream, validates its manifest, compatibility, requested permissions and tests, and keeps it inactive until approval.
 - **Application Adapters:** isolate Excel, To Do, OneDrive, OneNote and other application-specific DOM/API behavior from the core executor.
 - **Audit Log:** records task source, AI decision, workflow/version, approvals, execution steps, result and errors without unnecessarily storing private message content.
 
@@ -214,16 +220,17 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [ ] Add tests for notification duplicates, virtualized chat history, own messages, replies, audio and tab closure.
 - [ ] Update README and privacy documentation to match actual behavior.
 
-### Phase 2 — BCE control plane and connected AI
+### Phase 2 — BCE-side AI integration bridge (AI implementation excluded)
 
-- [ ] Define the AI provider interface and endpoint/model configuration.
-- [ ] Define secure secret handling; do not treat `chrome.storage.local` as an encrypted vault.
-- [ ] Create a capability catalog for actions BCE can perform directly.
-- [ ] Define a strict task-intent input/output schema.
-- [ ] Build the task router: intent → app → capability/workflow → required inputs → risk.
-- [ ] Add confidence/uncertainty handling and clarification requests.
-- [ ] Add policy checks and owner approval requirements.
-- [ ] Add a central task state machine: received, classified, waiting-for-input, awaiting-approval, queued, running, succeeded, failed, cancelled.
+- [ ] Define a provider-agnostic extension-to-AI request/response contract.
+- [ ] Implement the BCE-side connector transport to the separately developed AI service; do not implement model logic or training here.
+- [ ] Define and validate typed task-decision payloads received from the external AI.
+- [ ] Add request IDs, timeouts, cancellation and stale-response protection.
+- [ ] Add connection status, retry policy and user-visible AI-service errors.
+- [ ] Keep application context, tab identity and permissions bounded to the task being evaluated.
+- [ ] Create the BCE capability catalog for extension actions and workflow invocation.
+- [ ] Add BCE-side policy checks and owner approval requirements.
+- [ ] Add the extension task state machine: received, awaiting-AI, awaiting-input, awaiting-approval, queued, running, succeeded, failed, cancelled.
 - [ ] Add execution logs with redaction and user-visible status.
 - [ ] Add global pause/stop and per-task cancellation.
 
@@ -259,12 +266,12 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [ ] Test identical prompts, empty prompts, very long prompts, failed sends and interrupted generations.
 - [ ] Add the requested ability to request a ChatGPT UI mode (for example Thinking) only when the current page exposes a verifiable control; otherwise ask the AI/user for a supported path and never pretend it was enabled.
 
-### Phase 5 — Teams task intake and approval inbox
+### Phase 5 — Teams task intake and approval inbox (BCE side)
 
 - [ ] Reuse the current selected-group source rather than monitoring every group by default.
 - [ ] Preserve original Teams group, sender, timestamp and message reference for every candidate.
-- [ ] Detect likely task assignments and distinguish them from ordinary conversation.
-- [ ] Resolve whether a message is addressed to the owner (name/mention/known aliases) with confidence scoring.
+- [ ] Package relevant message context for the external AI service; do not implement the AI classifier in this extension workstream.
+- [ ] Receive and validate the external AI's task-candidate result and target/owner metadata.
 - [ ] Deduplicate the same task across notifications and visible chat DOM.
 - [ ] Show the task summary, exact source message and proposed workflow.
 - [ ] Ask the owner to approve, reject, defer or request clarification.
@@ -272,14 +279,13 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [ ] Report completion/failure back to the owner; do not post back into Teams without a separate permission/approval rule.
 - [ ] Support task expiry and reassignment/manual ownership correction.
 
-### Phase 6 — Missing-workflow discovery and authoring loop
+### Phase 6 — BCE workflow intake, GitHub sync and validation
 
-- [ ] Detect when no compatible workflow exists.
-- [ ] Ask the owner for the current manual procedure, expected result, edge cases and approval boundaries.
-- [ ] Convert answers into a structured workflow requirements specification.
-- [ ] Generate a comprehensive implementation prompt for ChatGPT from the specification and repository contracts.
+- [ ] Receive a missing-workflow request from the external AI and present the proposed requirements interview to the owner.
+- [ ] Capture the owner's procedure, expected result, edge cases and approval boundaries as structured extension data.
+- [ ] Send the completed workflow requirements package through the extension-to-AI bridge; workflow prompt/model generation remains in the separate AI workstream.
 - [ ] Keep generated code on the designated `Chatgpt` branch and avoid writing to other branches.
-- [ ] Fetch the generated commit and verify branch, changed paths and workflow manifest.
+- [ ] Fetch the generated commit from the designated branch and verify branch, changed paths and workflow manifest.
 - [ ] Run static validation, unit tests and sandbox simulations before trust is granted.
 - [ ] Display changed files, permissions and proposed behavior for review.
 - [ ] Require the configured approval before activating a newly generated workflow.
@@ -300,7 +306,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 
 - [ ] Unit tests for router, state machines, queues and workflow contracts.
 - [ ] Integration tests with mock application pages and controlled fixtures.
-- [ ] End-to-end tests for the ChatGPT repeat scheduler.
+- [ ] End-to-end tests for the BCE ChatGPT page-control and repeat scheduler.
 - [ ] End-to-end tests for Teams task → approval → workflow → verified result.
 - [ ] Regression tests for the existing Teams reader.
 - [ ] Permission/security review and secret-redaction tests.
@@ -335,7 +341,7 @@ The target product is much larger than the existing Voice Speakers release. A st
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Runtime / browser smoke verification: **0%** (not run in this repository review).
-- New AI router and workflow engine: **0% implemented**.
+- BCE-side AI connector bridge and workflow engine: **0% implemented** (external AI model/reasoning excluded from this extension meter).
 - ChatGPT send/repeat/scheduling capability: **0% implemented**.
 - Teams task classification and approval: **0% implemented**.
 - Workflow authoring and GitHub sync: **0% implemented**.
@@ -349,7 +355,8 @@ The overall product percentage will be calculated from the engineering backlog o
 
 - Preserve the existing BCE code and extend it incrementally; do not restart from zero.
 - All project code changes for this work go only to the `Chatgpt` branch.
-- Do not generate the real Excel / To Do / OneDrive / OneNote business workflows until the owner confirms BCE and its AI control layer are ready.
+- Do not generate the real Excel / To Do / OneDrive / OneNote business workflows until the owner confirms BCE and its external AI integration are ready.
+- In this extension workstream, implement only BCE-side integration contracts and browser-extension behavior; do not modify the separate AI model/backend.
 - Prefer small commits with a single purpose and verify the changed files after every commit.
 - Do not rename or remove existing public message contracts, DOM selectors, CSS classes or IDs without tracing all callers and adding migration/tests.
 - Do not claim browser behavior is verified when only static source inspection has been performed.
