@@ -51,6 +51,41 @@
           <span id="promptLength">0 / 50,000</span>
         </div>
 
+        <section class="pm-template-panel" aria-labelledby="templateHeading">
+          <div class="pm-template-heading">
+            <div>
+              <strong id="templateHeading">Saved prompt templates</strong>
+              <small>Reuse prompts with named variables such as {{date}} or {{project}}.</small>
+            </div>
+            <button id="refreshTemplates" class="pm-text-button" type="button">↻ Refresh</button>
+          </div>
+          <label class="pm-field-label" for="templateSelect">Choose a template</label>
+          <div class="pm-template-select-row">
+            <select id="templateSelect">
+              <option value="">New template / select saved template</option>
+            </select>
+            <button id="useTemplate" class="pm-action primary" type="button" disabled>Use template</button>
+          </div>
+          <div class="pm-template-edit">
+            <label class="pm-field-label" for="templateName">Template name</label>
+            <input id="templateName" type="text" maxlength="80" placeholder="Example: Weekly project update">
+            <label class="pm-field-label" for="templateContent">Template prompt</label>
+            <textarea id="templateContent" rows="4" maxlength="50000" placeholder="Write a reusable prompt. Add variables like {{project_name}} or {{report_date}}."></textarea>
+            <div class="pm-template-meta">
+              <span id="templateVariableSummary">No variables detected</span>
+              <span id="templateCount">0 / 100 saved</span>
+            </div>
+            <div id="templateVariables" class="pm-template-variables" hidden></div>
+            <div class="pm-template-actions">
+              <button id="saveTemplate" class="pm-action primary" type="button">Save as new</button>
+              <button id="updateTemplate" class="pm-action" type="button" disabled>Update selected</button>
+              <button id="toggleTemplate" class="pm-action warning" type="button" disabled>Disable</button>
+              <button id="deleteTemplate" class="pm-action danger" type="button" disabled>Delete</button>
+            </div>
+            <p id="templateStatus" class="pm-inline-status" role="status" aria-live="polite"></p>
+          </div>
+        </section>
+
         <div class="pm-repeat-panel">
           <div class="pm-repeat-row">
             <div>
