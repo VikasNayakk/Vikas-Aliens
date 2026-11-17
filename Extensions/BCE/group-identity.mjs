@@ -34,6 +34,13 @@ export function resolveTeamsGroupIdentity(groups, info, tabId) {
     };
   }
 
+  if(!chatId) {
+    return {
+      ok:false,
+      error:"BCE could not read this Teams conversation's stable ID. Open a message in this chat, choose More options > Copy link, then try adding the group again."
+    };
+  }
+
   if(chatId&&byName?.chatId&&byName.chatId!==chatId) {
     return {
       ok:false,
