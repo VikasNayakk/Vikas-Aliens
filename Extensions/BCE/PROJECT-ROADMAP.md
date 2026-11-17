@@ -266,7 +266,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Add ChatGPT content-script controls for verified composer detection, prompt entry and explicit Send-button interaction.
 - [x] Add assistant-generation state observation and stable-response detection; live DOM behavior still requires browser verification.
 - [ ] Detect and guide recovery for login, network, rate-limit, model-selection and other page-error states.
-- [x] Add per-job pause, resume and stop controls, plus manual review for uncertain sends / responses.
+- [x] Add per-job pause, resume and stop controls, plus manual review for uncertain sends / responses; uncertain dispatches can be stopped directly without retrying.
 - [ ] Add a global cancel-all action.
 - [x] Recover persisted prompt jobs after service-worker wake, tab reload and tab closure without automatically retrying uncertain sends; browser integration testing remains pending.
 - [ ] Add detailed per-repeat run history (individual attempt timestamps and outcomes).
@@ -350,7 +350,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
 - Phase 4 ChatGPT prompt automation: **9 of 16 implementation tasks complete (56%)**; browser smoke testing, repeat intervals, prompt templates, detailed run history, broader error recovery, global cancel-all and Thinking-mode control remain pending.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 19 `.js` / `.mjs` files in the audited folder.
-- BCE unit tests: **43 / 43 passed**, including speech queue helpers, Teams message validation, stable group identity, prompt job state transitions, send / response uncertainty, worker-restart recovery and ChatGPT content-script conversation-lock checks.
+- BCE unit tests: **44 / 44 passed**, including speech queue helpers, Teams message validation, stable group identity, prompt job state transitions, send / response uncertainty, worker-restart recovery and ChatGPT content-script conversation-lock checks.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
 - Local HTML asset validation: **passed** (4 pages and their local script / stylesheet references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
