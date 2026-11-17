@@ -99,13 +99,23 @@
     }).filter(item=>item.text);
   }
 
+  function textFingerprint(value){
+    let hash=2166136261;
+    for(let index=0;index<value.length;index++){
+      hash^=value.charCodeAt(index);
+      hash=Math.imul(hash,16777619);
+    }
+    return (hash>>>0).toString(36);
+  }
+
   function assistantSnapshot(){
     const records=messageRecords("assistant");
     const last=records[records.length-1]||null;
     return {
       count:records.length,
       lastKey:last?.key||"",
-      lastText:last?.text||""
+      lastHash:last?textFingerprint(last.text):"",
+      lastLength:last?.text.length||0
     };
   }
 
@@ -115,7 +125,8 @@
     return {
       count:records.length,
       lastKey:last?.key||"",
-      lastText:last?.text||""
+      lastHash:last?textFingerprint(last.text):"",
+      lastLength:last?.text.length||0
     };
   }
 
@@ -137,7 +148,7 @@
       url:location.href,
       composerAvailable:!!input,
       sendAvailable:!!sendButton(input),
-      ...snapshot()
+      assistantMessageCount:assistantSnapshot().count
     };
   }
 
@@ -277,12 +288,13 @@
       }
 
       const isNewAssistant=assistant.count>baseline.assistantCount||
-        (assistant.lastKey&&assistant.lastKey!==baseline.assistantKey&&assistant.lastText!==baseline.assistantText);
-      if(isNewAssistant&&assistant.lastText){
+        (assistant.lastKey&&assistant.lastKey!==baseline.assistantKey)||
+        (assistant.lastHash&&assistant.lastHash!==baseline.assistantHash);
+      if(isNewAssistant&&assistant.lastLength>0){
         monitor.sawNewAssistant=true;
       }
 
-      const fingerprint=[assistant.count,assistant.lastKey,assistant.lastText,stopSignalVisible()].join("|");
+      const fingerprint=[assistant.count,assistant.lastKey,assistant.lastHash,assistant.lastLength,stopSignalVisible()].join("|");
       if(fingerprint!==monitor.lastFingerprint){
         monitor.lastFingerprint=fingerprint;
         monitor.lastChangeAt=now();
@@ -291,13 +303,13 @@
       const generating=stopSignalVisible();
       const stableFor=now()-monitor.lastChangeAt;
       const age=now()-monitor.startedAt;
-      if(monitor.sawNewAssistant&&!generating&&assistant.lastText&&stableFor>=5000&&age>=5000){
+      if(monitor.sawNewAssistant&&!generating&&assistant.lastLength>0&&stableFor>=5000&&age>=5000){
         monitor.completed=true;
         stopMonitor(jobId);
         sendRuntime("CHATGPT_RESPONSE_COMPLETED",{
           jobId,token,conversationId:monitor.conversationId,
           completedAt:now(),
-          responseLength:assistant.lastText.length
+          responseLength:assistant.lastLength
         });
       }
     }
@@ -360,7 +372,8 @@
       baseline:{
         assistantCount:before.assistant.count,
         assistantKey:before.assistant.lastKey,
-        assistantText:before.assistant.lastText,
+        assistantHash:before.assistant.lastHash,
+        assistantLength:before.assistant.lastLength,
         userCount:before.user.count,
         sentUserCount:0,
         sentUserKey:""
