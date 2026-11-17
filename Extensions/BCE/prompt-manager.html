@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ChatGPT Prompt Scheduler · BCE</title>
+  <link rel="stylesheet" href="prompt-manager.css">
+</head>
+<body>
+  <header class="pm-header">
+    <div class="pm-brand">
+      <div class="pm-mark">BCE</div>
+      <div>
+        <strong>ChatGPT Prompt Scheduler</strong>
+        <small>ALIENS · BROWSER CONTROL EXTENSION</small>
+      </div>
+    </div>
+    <div class="pm-header-right">
+      <span id="connectionState" class="pm-connection">Connecting to extension…</span>
+      <a href="popup.html">Teams reader</a>
+    </div>
+  </header>
+
+  <main class="pm-main">
+    <section class="pm-intro">
+      <div>
+        <p class="pm-eyebrow">CONTROL CENTER</p>
+        <h1>Run prompts across conversations</h1>
+        <p class="pm-muted">Each conversation has its own serial queue. BCE waits for the current assistant response before sending that conversation's next prompt.</p>
+      </div>
+      <div class="pm-limit">
+        <strong>3</strong>
+        <span>maximum conversations dispatched at once</span>
+      </div>
+    </section>
+
+    <div class="pm-columns">
+      <section class="pm-card pm-create-card">
+        <div class="pm-section-heading">
+          <div>
+            <h2>New prompt job</h2>
+            <p>One job will be created for each selected conversation.</p>
+          </div>
+          <span class="pm-step">01</span>
+        </div>
+
+        <label class="pm-field-label" for="promptText">Prompt</label>
+        <textarea id="promptText" rows="7" maxlength="50000" placeholder="Enter the prompt BCE should send to the selected ChatGPT conversations…"></textarea>
+        <div class="pm-field-foot">
+          <span>Same prompt for every selected conversation</span>
+          <span id="promptLength">0 / 50,000</span>
+        </div>
+
+        <div class="pm-repeat-panel">
+          <div class="pm-repeat-row">
+            <div>
+              <strong>Repeat setting</strong>
+              <small>Count is based on completed assistant responses.</small>
+            </div>
+            <label class="pm-toggle">
+              <input id="unlimited" type="checkbox">
+              <span>Unlimited</span>
+            </label>
+          </div>
+          <div id="repeatCountWrap" class="pm-count-row">
+            <label for="repeatCount">Send this prompt</label>
+            <div class="pm-count-input">
+              <input id="repeatCount" type="number" min="1" max="100000" step="1" value="1">
+              <span>times per conversation</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pm-section-heading pm-conversation-heading">
+          <div>
+            <h2>Open ChatGPT conversations</h2>
+            <p id="conversationSummary">Checking open tabs…</p>
+          </div>
+          <button id="refreshConversations" class="pm-text-button" type="button">↻ Refresh</button>
+        </div>
+        <div class="pm-select-all">
+          <label><input id="selectAll" type="checkbox"> Select all available conversations</label>
+          <span id="selectedCount">0 selected</span>
+        </div>
+        <div id="conversations" class="pm-conversation-list">
+          <div class="pm-empty">Looking for open ChatGPT conversations…</div>
+        </div>
+        <p class="pm-note">Only conversations with a verifiable conversation ID and an available composer/Send control are listed. A prompt whose send status is uncertain will pause for your review instead of being sent again automatically.</p>
+        <button id="createJobs" class="pm-primary" type="button" disabled>Create prompt jobs</button>
+        <p id="createStatus" class="pm-inline-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="pm-card pm-jobs-card">
+        <div class="pm-section-heading">
+          <div>
+            <h2>Prompt jobs</h2>
+            <p>Monitor progress and control each job.</p>
+          </div>
+          <button id="refreshJobs" class="pm-text-button" type="button">↻ Refresh</button>
+        </div>
+        <div class="pm-stats">
+          <div><strong id="queuedCount">0</strong><span>Queued</span></div>
+          <div><strong id="activeCount">0</strong><span>Active</span></div>
+          <div><strong id="reviewCount">0</strong><span>Needs review</span></div>
+        </div>
+        <div id="jobs" class="pm-job-list">
+          <div class="pm-empty">No prompt jobs yet.</div>
+        </div>
+      </section>
+    </div>
+    <footer class="pm-footer">BCE does not send another prompt to the same conversation while its previous response is generating or has an uncertain state. If a send cannot be verified, check the ChatGPT conversation before resolving the job.</footer>
+  </main>
+  <script src="prompt-manager.js"></script>
+</body>
+</html>
