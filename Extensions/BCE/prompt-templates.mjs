@@ -34,14 +34,13 @@ export function upsertPromptTemplate(templates,input,now=Date.now()){
   let variables;
   try{variables=extractPromptTemplateVariables(content);}
   catch(error){return invalid(error.message);}
-  const existingIndex=id?templates.findIndex(item=>item?.id===id):-1;
-  if(id&&existingIndex<0) return invalid("The selected template no longer exists. Refresh the template list.");
+  if(!id) return invalid("A template ID must be supplied when creating a template.");
+  const existingIndex=templates.findIndex(item=>item?.id===id);
   const previous=existingIndex>=0?templates[existingIndex]:null;
   const duplicate=templates.find(item=>item?.id!==previous?.id&&
     String(item?.name||"").trim().toLocaleLowerCase()===name.toLocaleLowerCase());
   if(duplicate) return invalid("A template with this name already exists.");
   if(existingIndex<0&&templates.length>=MAX_TEMPLATES) return invalid("You can save up to 100 prompt templates.");
-  if(!id) return invalid("A template ID must be supplied when creating a template.");
   const template={
     id:previous?.id||id,name,content,variables,enabled,
     createdAt:previous?.createdAt??now,updatedAt:now
