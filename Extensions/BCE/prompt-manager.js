@@ -1,6 +1,7 @@
 const $=id=>document.getElementById(id);
 let conversations=[];
 let jobs=[];
+let templates=[];
 const selectedTabs=new Set();
 let busy=false;
 
@@ -17,6 +18,106 @@ async function request(type,payload={}){
   if(!result) throw new Error("The extension service worker did not return a response.");
   if(result.ok===false) throw new Error(result.error||"The request was rejected.");
   return result;
+}
+function selectedTemplate(){
+  const id=$("templateSelect").value;
+  return templates.find(item=>item.id===id)||null;
+}
+function templateStatus(message,isError=false){
+  $("templateStatus").textContent=message;
+  $("templateStatus").style.color=isError?"#b43d4b":"";
+}
+function renderTemplateVariables(){
+  const root=$("templateVariables");
+  const previous=new Map([...root.querySelectorAll("[data-template-variable]")].map(input=>[input.dataset.templateVariable,input.value]));
+  root.replaceChildren();
+  const content=$("templateContent").value;
+  const variables=[...new Set([...content.matchAll(/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g)].map(match=>match[1]))];
+  const residue=content.replace(/{{\\s*[A-Za-z][A-Za-z0-9_]{0,39}\\s*}}/g,"");
+  const malformed=residue.includes("{{")||residue.includes("}}");
+  $("templateVariableSummary").textContent=malformed
+    ?"Invalid variable syntax"
+    :variables.length?variables.length+" variable(s): "+variables.map(name=>"{{"+name+"}}").join(", "):"No variables detected";
+  root.hidden=variables.length===0;
+  for(const name of variables){
+    const wrap=document.createElement("div");
+    wrap.className="pm-template-variable";
+    const label=document.createElement("label");
+    label.textContent=name;
+    const input=document.createElement("input");
+    input.type="text";
+    input.dataset.templateVariable=name;
+    input.placeholder="Enter "+name;
+    input.value=previous.get(name)||"";
+    wrap.append(label,input);
+    root.append(wrap);
+  }
+  $("useTemplate").disabled=!selectedTemplate()?.enabled||malformed||!variables.length&& !content.trim();
+}
+function renderTemplates(preferredId){
+  const select=$("templateSelect");
+  const current=preferredId||select.value;
+  select.replaceChildren();
+  const placeholder=document.createElement("option");
+  placeholder.value="";
+  placeholder.textContent="New template / select saved template";
+  select.append(placeholder);
+  templates.forEach(template=>{
+    const option=document.createElement("option");
+    option.value=template.id;
+    option.textContent=template.name+(template.enabled?"":" (disabled)");
+    select.append(option);
+  });
+  select.value=templates.some(item=>item.id===current)?current:"";
+  $("templateCount").textContent=templates.length+" / 100 saved";
+  const selected=selectedTemplate();
+  const hasSelected=!!selected;
+  $("updateTemplate").disabled=!hasSelected;
+  $("toggleTemplate").disabled=!hasSelected;
+  $("deleteTemplate").disabled=!hasSelected;
+  $("toggleTemplate").textContent=selected?.enabled?"Disable":"Enable";
+  $("toggleTemplate").className="pm-action "+(selected?.enabled?"warning":"primary");
+  if(selected){
+    $("templateName").value=selected.name;
+    $("templateContent").value=selected.content;
+  }
+  renderTemplateVariables();
+}
+async function refreshTemplates(preferredId){
+  $("refreshTemplates").disabled=true;
+  try{
+    const result=await request("GET_CHATGPT_PROMPT_TEMPLATES");
+    templates=Array.isArray(result.templates)?result.templates:[];
+    renderTemplates(preferredId);
+  }catch(error){
+    templateStatus(error.message,true);
+  }finally{
+    $("refreshTemplates").disabled=false;
+  }
+}
+function templateValues(){
+  const values={};
+  for(const input of $("templateVariables").querySelectorAll("[data-template-variable]")){
+    if(!input.value.trim()) throw new Error("Enter a value for template variable: "+input.dataset.templateVariable);
+    values[input.dataset.templateVariable]=input.value;
+  }
+  return values;
+}
+function renderTemplateToPrompt(){
+  const content=$("templateContent").value;
+  const variables=[...new Set([...content.matchAll(/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g)].map(match=>match[1]))];
+  const residue=content.replace(/{{\\s*[A-Za-z][A-Za-z0-9_]{0,39}\\s*}}/g,"");
+  if(residue.includes("{{")||residue.includes("}}")) throw new Error("Use variable format {{variable_name}} with a letter first.");
+  if(!content.trim()) throw new Error("Template prompt cannot be empty.");
+  const values=templateValues();
+  const rendered=content.replace(/{{\\s*([A-Za-z][A-Za-z0-9_]{0,39})\\s*}}/g,(_,name)=>{
+    if(!Object.prototype.hasOwnProperty.call(values,name)) throw new Error("Enter a value for template variable: "+name);
+    return values[name];
+  });
+  $("promptText").value=rendered;
+  $("promptLength").textContent=rendered.length.toLocaleString()+" / 50,000";
+  setBusy(busy);
+  messageStatus("Template inserted into the prompt. Review it before creating jobs.");
 }
 function setBusy(value){
   busy=value;
@@ -319,7 +420,7 @@ $("createJobs").addEventListener("click",async()=>{
   selectedTabs.clear();
   $("promptText").value="";
   $("promptLength").textContent="0 / 50,000";
-  await Promise.all([refreshConversations(),refreshJobs()]);
+  await Promise.all([refreshConversations(),refreshJobs(),refreshTemplates()]);
   setBusy(false);
 });
 chrome.runtime.onMessage.addListener(message=>{
@@ -330,5 +431,6 @@ chrome.runtime.onMessage.addListener(message=>{
 });
 chrome.storage.onChanged.addListener((changes,area)=>{
   if(area==="local"&&changes.chatgptPromptJobs) refreshJobs();
+  if(area==="local"&&changes.chatgptPromptTemplates) refreshTemplates();
 });
 Promise.all([refreshConversations(),refreshJobs()]);
