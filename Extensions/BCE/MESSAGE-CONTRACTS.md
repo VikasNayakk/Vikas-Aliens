@@ -97,7 +97,14 @@ Payload fields:
 - `audioRef?: string`
 - `audioUrl?: string`
 
-The service worker rejects messages that do not come from a Teams tab, are not for a selected group, have no sender, or contain neither text nor an audio source.
+The service worker validates the payload through `message-contracts.mjs` before doing any queue work. The validator:
+- requires a string sender and a normalized group key;
+- rejects non-string or oversized text / routing fields (message text is limited to 50,000 characters);
+- accepts only HTTP(S) audio URLs or blob URLs with an HTTP(S) origin;
+- restricts audio references to a safe alphanumeric / underscore / hyphen format;
+- requires message text or a valid audio source.
+
+The service worker also checks the originating tab URL against the allowed Teams hosts and verifies the group is currently selected. Invalid messages are ignored and are not persisted.
 
 ### `TEAMS_LIVE_STATUS`
 
