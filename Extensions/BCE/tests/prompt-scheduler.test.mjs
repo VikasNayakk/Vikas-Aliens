@@ -460,3 +460,102 @@ test("worker recovery preserves a valid waiting interval and its absolute due ti
   assert.equal(recovered.jobs[0].status,"waiting_interval");
   assert.equal(recovered.jobs[0].nextRunAt,90000);
 });
+
+test("records each dispatch attempt with timestamps and a completed outcome",()=>{
+  let jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","token-a",1100).jobs;
+  assert.equal(jobs[0].attemptCount,1);
+  assert.deepEqual(jobs[0].runHistory[0],{
+    attempt:1,startedAt:1100,sendConfirmedAt:null,completedAt:null,uncertainAt:null,
+    durationMs:null,outcome:"sending",error:"",resolution:"",resolvedAt:null
+  });
+  jobs=confirmPromptSent(jobs,"job-a","token-a",1200).jobs;
+  assert.equal(jobs[0].runHistory[0].sendConfirmedAt,1200);
+  assert.equal(jobs[0].runHistory[0].outcome,"awaiting_response");
+  jobs=completePromptResponse(jobs,"job-a","token-a",5000).jobs;
+  assert.equal(jobs[0].runHistory[0].outcome,"completed");
+  assert.equal(jobs[0].runHistory[0].completedAt,5000);
+  assert.equal(jobs[0].runHistory[0].durationMs,3900);
+});
+test("records separate attempts without overwriting earlier run history",()=>{
+  let jobs=[makeJob({repeatLimit:2})];
+  jobs=beginPromptSend(jobs,"job-a","first",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","first",1200).jobs;
+  jobs=completePromptResponse(jobs,"job-a","first",5000).jobs;
+  jobs=beginPromptSend(jobs,"job-a","second",6000).jobs;
+  assert.equal(jobs[0].attemptCount,2);
+  assert.equal(jobs[0].runHistory.length,2);
+  assert.equal(jobs[0].runHistory[0].outcome,"completed");
+  assert.equal(jobs[0].runHistory[1].attempt,2);
+  assert.equal(jobs[0].runHistory[1].outcome,"sending");
+});
+test("records dispatch failures and uncertain sends without storing prompt or response content",()=>{
+  let jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","failed-token",1100).jobs;
+  jobs=failPromptDispatch(jobs,"job-a","failed-token","Composer was unavailable.",1200).jobs;
+  assert.equal(jobs[0].runHistory[0].outcome,"failed");
+  assert.equal(jobs[0].runHistory[0].error,"Composer was unavailable.");
+  jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","uncertain-token",2000).jobs;
+  jobs=markPromptDispatchUncertain(jobs,"job-a","uncertain-token","Send acknowledgement missing.",2200).jobs;
+  assert.equal(jobs[0].runHistory[0].outcome,"uncertain_dispatch");
+  assert.equal(jobs[0].runHistory[0].uncertainAt,2200);
+  assert.equal(jobs[0].runHistory[0].durationMs,200);
+  assert.equal(jobs[0].runHistory[0].error,"Send acknowledgement missing.");
+  assert.equal("prompt" in jobs[0].runHistory[0],false);
+  assert.equal("responseText" in jobs[0].runHistory[0],false);
+});
+test("records response uncertainty and its manual resolution",()=>{
+  let jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","response-token",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","response-token",1200).jobs;
+  jobs=markPromptResponseUncertain(jobs,"job-a","response-token","Generation timed out.",4000).jobs;
+  assert.equal(jobs[0].runHistory[0].outcome,"uncertain_response");
+  const continued=resolveUncertainPromptJob(jobs,"job-a","continue_waiting",4500);
+  assert.equal(continued.job.runHistory[0].outcome,"awaiting_response");
+  assert.equal(continued.job.runHistory[0].resolution,"Owner chose to continue waiting.");
+  jobs=markPromptResponseUncertain(continued.jobs,"job-a","response-token","Still uncertain.",5000).jobs;
+  const stopped=resolveUncertainPromptJob(jobs,"job-a","stop_job",5100);
+  assert.equal(stopped.job.runHistory[0].outcome,"stopped_after_review");
+  assert.equal(stopped.job.runHistory[0].resolvedAt,5100);
+});
+test("manual send review records confirmed-sent and confirmed-not-sent decisions",()=>{
+  let jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","manual-sent",1100).jobs;
+  jobs=markPromptDispatchUncertain(jobs,"job-a","manual-sent","No acknowledgement.",1200).jobs;
+  const sent=resolveUncertainPromptJob(jobs,"job-a","confirm_sent",1300);
+  assert.equal(sent.job.runHistory[0].outcome,"awaiting_response");
+  assert.equal(sent.job.runHistory[0].sendConfirmedAt,1300);
+  assert.equal(sent.job.runHistory[0].resolution,"Owner confirmed the prompt was sent.");
+
+  jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","manual-not-sent",2100).jobs;
+  jobs=markPromptDispatchUncertain(jobs,"job-a","manual-not-sent","No acknowledgement.",2200).jobs;
+  const notSent=resolveUncertainPromptJob(jobs,"job-a","confirm_not_sent",2300);
+  assert.equal(notSent.job.runHistory[0].outcome,"not_sent_confirmed");
+  assert.equal(notSent.job.runHistory[0].completedAt,2300);
+});
+test("caps retained run history while keeping the lifetime attempt counter monotonic",()=>{
+  let jobs=[makeJob({repeatLimit:1000})];
+  for(let index=1;index<=105;index++){
+    const token="run-"+index;
+    jobs=beginPromptSend(jobs,"job-a",token,1000+index*10).jobs;
+    jobs=confirmPromptSent(jobs,"job-a",token,1001+index*10).jobs;
+    jobs=completePromptResponse(jobs,"job-a",token,1002+index*10).jobs;
+  }
+  assert.equal(jobs[0].attemptCount,105);
+  assert.equal(jobs[0].runHistory.length,100);
+  assert.equal(jobs[0].runHistory[0].attempt,6);
+  assert.equal(jobs[0].runHistory[99].attempt,105);
+});
+test("manual failed-response resolution records a failed outcome and review timestamp",()=>{
+  let jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","manual-failed",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","manual-failed",1200).jobs;
+  jobs=markPromptResponseUncertain(jobs,"job-a","manual-failed","Response monitor stopped.",2000).jobs;
+  const result=resolveUncertainPromptJob(jobs,"job-a","confirm_failed",2500);
+  assert.equal(result.job.runHistory[0].outcome,"failed");
+  assert.equal(result.job.runHistory[0].resolvedAt,2500);
+  assert.equal(result.job.runHistory[0].durationMs,1400);
+});
+

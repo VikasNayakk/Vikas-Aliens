@@ -156,7 +156,7 @@ The speech queue phase values currently used are `group`, `gap`, `message` and `
 | Message type | Request fields | Response |
 |---|---|---|
 | `GET_CHATGPT_CONVERSATIONS` | None | `{ ok, conversations[] }`; one row per unique conversation ID |
-| `GET_CHATGPT_PROMPT_JOBS` | None | `{ ok, jobs[] }` |
+| `GET_CHATGPT_PROMPT_JOBS` | None | `{ ok, jobs[] }`; each job includes up to 100 most recent per-attempt history records |
 | `CREATE_CHATGPT_PROMPT_JOB` | `tabId: number, prompt: string, repeatLimit: positive integer or null, repeatIntervalSeconds?: 0 or 30–86,400` | `{ ok, job, state }` |
 | `PAUSE_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
 | `STOP_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
@@ -192,7 +192,7 @@ Templates are stored locally under `chatgptPromptTemplates`. The template model 
 - `CHATGPT_RESPONSE_COMPLETED`: `jobId, token, conversationId, completedAt, responseLength`. Accepted only when tab ID, conversation ID, token and active job state all match.
 - `CHATGPT_RESPONSE_UNCERTAIN`: `jobId, token, conversationId, reason`. Moves the matching active response to manual review; it does not trigger an automatic resend.
 
-The response baseline stores message counts, DOM keys, fingerprints and lengths—not the assistant's full response text. The content script determines generation completion from observed page controls and a stable new assistant message. This is a DOM heuristic, not a server-confirmed completion event.
+Each job retains a maximum of 100 recent attempt records with a monotonic attempt number, start / send-confirmation / completion timestamps, outcome, duration and bounded error / manual-review details. Attempt history excludes prompt text, assistant response text and page contents. The response baseline stores message counts, DOM keys, fingerprints and lengths—not the assistant's full response text. The content script determines generation completion from observed page controls and a stable new assistant message. This is a DOM heuristic, not a server-confirmed completion event.
 
 ### Prompt job storage
 

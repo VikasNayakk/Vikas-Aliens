@@ -229,6 +229,87 @@ function statusLabel(status){
     failed:"Failed"
   })[status]||status;
 }
+function formatRunTimestamp(value){
+  if(!Number.isFinite(value)||value<0) return "—";
+  try{return new Intl.DateTimeFormat(undefined,{dateStyle:"medium",timeStyle:"medium"}).format(new Date(value));}
+  catch(_){return new Date(value).toLocaleString();}
+}
+function formatRunDuration(value){
+  if(!Number.isFinite(value)||value<0) return "—";
+  if(value<1000) return Math.round(value)+" ms";
+  const seconds=value/1000;
+  if(seconds<60) return seconds.toFixed(1)+" s";
+  const minutes=Math.floor(seconds/60);
+  return minutes+"m "+Math.round(seconds%60)+"s";
+}
+function runOutcomeLabel(outcome){
+  return ({
+    sending:"Sending",
+    awaiting_response:"Awaiting response",
+    completed:"Completed",
+    failed:"Failed",
+    uncertain_dispatch:"Uncertain send",
+    uncertain_response:"Uncertain response",
+    not_sent_confirmed:"Confirmed not sent",
+    stopped_after_review:"Stopped after review"
+  })[outcome]||String(outcome||"Unknown");
+}
+function renderRunHistory(job){
+  const history=Array.isArray(job.runHistory)?job.runHistory:[];
+  if(!history.length) return null;
+  const details=document.createElement("details");
+  details.className="pm-history";
+  const summary=document.createElement("summary");
+  summary.textContent="Run history · "+history.length+" recorded (latest 100 retained)";
+  details.append(summary);
+  const list=document.createElement("ol");
+  list.className="pm-history-list";
+  [...history].reverse().forEach(run=>{
+    const item=document.createElement("li");
+    item.className="pm-history-item";
+    const heading=document.createElement("div");
+    heading.className="pm-history-heading";
+    const attempt=document.createElement("strong");
+    attempt.textContent="Attempt #"+String(run.attempt??"—");
+    const outcome=document.createElement("span");
+    outcome.className="pm-history-outcome "+String(run.outcome||"unknown");
+    outcome.textContent=runOutcomeLabel(run.outcome);
+    heading.append(attempt,outcome);
+    const times=document.createElement("dl");
+    times.className="pm-history-times";
+    const fields=[
+      ["Started",formatRunTimestamp(run.startedAt)],
+      ["Send confirmed",formatRunTimestamp(run.sendConfirmedAt)],
+      ["Completed / reviewed",formatRunTimestamp(run.completedAt??run.uncertainAt??run.resolvedAt)],
+      ["Duration",formatRunDuration(run.durationMs)]
+    ];
+    fields.forEach(([label,value])=>{
+      const wrap=document.createElement("div");
+      const dt=document.createElement("dt");
+      const dd=document.createElement("dd");
+      dt.textContent=label;
+      dd.textContent=value;
+      wrap.append(dt,dd);
+      times.append(wrap);
+    });
+    item.append(heading,times);
+    if(run.resolution){
+      const resolution=document.createElement("p");
+      resolution.className="pm-history-note";
+      resolution.textContent="Review: "+run.resolution;
+      item.append(resolution);
+    }
+    if(run.error){
+      const error=document.createElement("p");
+      error.className="pm-history-error";
+      error.textContent=run.error;
+      item.append(error);
+    }
+    list.append(item);
+  });
+  details.append(list);
+  return details;
+}
 function createActionButton(label,jobId,action,decision,variant=""){
   const button=document.createElement("button");
   button.type="button";
@@ -279,6 +360,8 @@ function renderJob(job){
   else if(job.status==="paused"&&Number.isFinite(job.remainingDelayMs)&&job.remainingDelayMs>0) foot.textContent+=" · "+Math.ceil(job.remainingDelayMs/1000)+"s remaining before next run";
 
   card.append(top,meta,prompt,progress,foot);
+  const history=renderRunHistory(job);
+  if(history) card.append(history);
 
   if(job.lastError){
     const error=document.createElement("div");
@@ -317,7 +400,7 @@ function renderJobs(){
   const root=$("jobs");
   root.replaceChildren();
   const terminal=["completed","stopped","failed"];
-  const queued=jobs.filter(job=>job.status==="queued"||job.status==="paused").length;
+  const queued=jobs.filter(job=>["queued","waiting_interval","paused"].includes(job.status)).length;
   const active=jobs.filter(job=>["sending","awaiting_response"].includes(job.status)).length;
   const review=jobs.filter(job=>job.status==="needs_review").length;
   $("queuedCount").textContent=String(queued);

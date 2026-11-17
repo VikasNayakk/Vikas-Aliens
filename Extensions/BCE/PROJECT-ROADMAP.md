@@ -279,7 +279,10 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Add per-job pause, resume and stop controls, plus manual review for uncertain sends / responses; uncertain dispatches can be stopped directly without retrying.
 - [x] Add a global cancel-all action; queued work stops immediately, while active responses are allowed to finish before stopping future repeats. Needs-review jobs remain locked.
 - [x] Recover persisted prompt jobs after service-worker wake, tab reload and tab closure without automatically retrying uncertain sends; browser integration testing remains pending.
-- [ ] Add detailed per-repeat run history (individual attempt timestamps and outcomes).
+- [x] Add detailed per-repeat run history (individual attempt timestamps and outcomes).
+  - Every actual dispatch attempt gets a monotonically increasing attempt number and a persisted start timestamp.
+  - Record send acknowledgement, response completion, duration, dispatch failures, uncertain states and manual-review resolutions.
+  - Retain only the latest 100 attempts per job; history excludes prompt text and assistant response content.
 - [ ] Complete the manual Chrome browser test matrix in [BROWSER-SMOKE-TEST.md](BROWSER-SMOKE-TEST.md): identical prompts, empty / maximum-length prompts, failed sends, interrupted generation, navigation, worker restart, concurrency, stop behavior and Teams-reader regression. The matrix is documented; all real-browser cases remain Not run until observed in Chrome.
 - [ ] Add the requested ability to request a ChatGPT UI mode (for example Thinking) only when the current page exposes a verifiable control; otherwise report that the mode is unavailable.
 
@@ -358,7 +361,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
-- Phase 4 ChatGPT prompt automation: **12 of 16 implementation tasks complete (75%)**; browser smoke testing, detailed run history, broader error recovery and Thinking-mode control remain pending.
+- Phase 4 ChatGPT prompt automation: **13 of 16 implementation tasks complete (81%)**; browser smoke testing, broader error recovery and Thinking-mode control remain pending.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 21 `.js` / `.mjs` files in the current audited folder.
 - BCE unit tests: **69 / 69 passed** in GitHub Actions, including 12 repeat-interval lifecycle / policy tests, 3 global-cancel tests and 10 prompt-template lifecycle / variable tests.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
@@ -379,7 +382,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-A simple task-count meter (equal weight per checklist item across Phases 0–8) is **30 / 96 complete (31.3%) and 66 / 96 pending (68.7%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
+A simple task-count meter (equal weight per checklist item across Phases 0–8) is **31 / 96 complete (32.3%) and 65 / 96 pending (67.7%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 

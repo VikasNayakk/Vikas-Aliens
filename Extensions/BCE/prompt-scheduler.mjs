@@ -17,6 +17,22 @@ function validRepeatInterval(value) {
   return Number.isInteger(value)&&(value===0||(value>=MIN_REPEAT_INTERVAL_SECONDS&&value<=MAX_REPEAT_INTERVAL_SECONDS));
 }
 
+const MAX_PROMPT_RUN_HISTORY=100;
+function appendPromptRun(job,run) {
+  const history=Array.isArray(job.runHistory)?job.runHistory:[];
+  return [...history,run].slice(-MAX_PROMPT_RUN_HISTORY);
+}
+function updateLatestPromptRun(job,updates) {
+  const history=Array.isArray(job.runHistory)?job.runHistory.slice():[];
+  if(!history.length) return history;
+  const index=history.length-1;
+  history[index]={...history[index],...updates};
+  return history;
+}
+function promptRunDuration(run,endedAt) {
+  return validTime(run?.startedAt)&&validTime(endedAt)?Math.max(0,endedAt-run.startedAt):null;
+}
+
 function validTime(value) {
   return typeof value==="number"&&Number.isFinite(value)&&value>=0;
 }
@@ -63,6 +79,8 @@ export function createPromptJob(input,now=Date.now()) {
     prompt,
     repeatLimit,
     repeatIntervalSeconds,
+    attemptCount:0,
+    runHistory:[],
     nextRunAt:null,
     remainingDelayMs:null,
     sentCount:0,
@@ -124,10 +142,25 @@ export function beginPromptSend(jobs,jobId,token,now=Date.now()) {
   );
   if(locked) return errorResult("This ChatGPT conversation already has an active prompt job.");
 
+  const attemptCount=(Number.isInteger(job.attemptCount)&&job.attemptCount>=0?job.attemptCount:0)+1;
+  const run={
+    attempt:attemptCount,
+    startedAt:now,
+    sendConfirmedAt:null,
+    completedAt:null,
+    uncertainAt:null,
+    durationMs:null,
+    outcome:"sending",
+    error:"",
+    resolution:"",
+    resolvedAt:null
+  };
   const updated={
     ...job,
     status:"sending",
     currentToken:token,
+    attemptCount,
+    runHistory:appendPromptRun(job,run),
     updatedAt:now,
     lastError:""
   };
@@ -157,6 +190,7 @@ export function confirmPromptSent(jobs,jobId,token,now=Date.now(),responseBaseli
   const updated={
     ...job,
     status:"awaiting_response",
+    runHistory:updateLatestPromptRun(job,{sendConfirmedAt:now,outcome:"awaiting_response"}),
     responseBaseline:baseline,
     uncertaintyKind:null,
     sentCount:job.sentCount+1,
@@ -196,6 +230,12 @@ export function completePromptResponse(jobs,jobId,token,now=Date.now()) {
     stopRequested:false,
     nextRunAt,
     remainingDelayMs,
+    runHistory:updateLatestPromptRun(job,{
+      outcome:"completed",
+      completedAt:now,
+      durationMs:promptRunDuration((Array.isArray(job.runHistory)?job.runHistory:[]).at(-1),now),
+      error:""
+    }),
     lastCompletedAt:now,
     updatedAt:now
   };
@@ -270,6 +310,12 @@ export function markPromptDispatchUncertain(jobs,jobId,token,error,now=Date.now(
   const updated={
     ...job,
     status:"needs_review",
+    runHistory:updateLatestPromptRun(job,{
+      outcome:"uncertain_dispatch",
+      uncertainAt:now,
+      durationMs:promptRunDuration((Array.isArray(job.runHistory)?job.runHistory:[]).at(-1),now),
+      error:String(error||"The send result could not be confirmed. Check ChatGPT before retrying.").slice(0,500)
+    }),
     uncertaintyKind:"dispatch",
     responseBaseline:responseBaseline&&typeof responseBaseline==="object"?responseBaseline:job.responseBaseline,
     lastError:String(error||"The send result could not be confirmed. Check the ChatGPT conversation before retrying.").slice(0,500),
@@ -290,6 +336,12 @@ export function markPromptResponseUncertain(jobs,jobId,token,error,now=Date.now(
   const updated={
     ...job,
     status:"needs_review",
+    runHistory:updateLatestPromptRun(job,{
+      outcome:"uncertain_response",
+      uncertainAt:now,
+      durationMs:promptRunDuration((Array.isArray(job.runHistory)?job.runHistory:[]).at(-1),now),
+      error:String(error||"Assistant completion could not be verified. Check the ChatGPT conversation.").slice(0,500)
+    }),
     uncertaintyKind:"response",
     lastError:String(error||"Assistant completion could not be verified. Check the ChatGPT conversation.").slice(0,500),
     updatedAt:now
@@ -309,6 +361,12 @@ export function failPromptDispatch(jobs,jobId,token,error,now=Date.now()) {
   const updated={
     ...job,
     status:"failed",
+    runHistory:updateLatestPromptRun(job,{
+      outcome:"failed",
+      completedAt:now,
+      durationMs:promptRunDuration((Array.isArray(job.runHistory)?job.runHistory:[]).at(-1),now),
+      error:String(error||"The prompt was not sent.").slice(0,500)
+    }),
     currentToken:null,
     responseBaseline:null,
     uncertaintyKind:null,
@@ -372,6 +430,11 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
     updated={
       ...job,
       status:"stopped",
+      runHistory:updateLatestPromptRun(job,{
+        outcome:"stopped_after_review",
+        resolution:"Owner stopped the job after reviewing an uncertain send.",
+        resolvedAt:now
+      }),
       currentToken:null,
       responseBaseline:null,
       uncertaintyKind:null,
@@ -386,11 +449,33 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
       return completePromptResponse(replaceJob(jobs,awaiting),jobId,job.currentToken,now);
     }
     if(decision==="continue_waiting") {
-      updated={...job,status:"awaiting_response",uncertaintyKind:null,updatedAt:now,lastError:""};
+      updated={
+        ...job,
+        status:"awaiting_response",
+        runHistory:updateLatestPromptRun(job,{outcome:"awaiting_response",resolution:"Owner chose to continue waiting.",resolvedAt:now,error:""}),
+        uncertaintyKind:null,updatedAt:now,lastError:""
+      };
     } else if(decision==="stop_job") {
-      updated={...job,status:"stopped",currentToken:null,responseBaseline:null,uncertaintyKind:null,updatedAt:now,lastError:""};
+      updated={
+        ...job,
+        status:"stopped",
+        runHistory:updateLatestPromptRun(job,{outcome:"stopped_after_review",resolution:"Owner stopped the job after reviewing the uncertain response.",resolvedAt:now}),
+        currentToken:null,responseBaseline:null,uncertaintyKind:null,updatedAt:now,lastError:""
+      };
     } else if(decision==="confirm_failed") {
-      updated={...job,status:"failed",currentToken:null,responseBaseline:null,uncertaintyKind:null,updatedAt:now,lastError:"The current prompt response was marked failed after manual review."};
+      updated={
+        ...job,
+        status:"failed",
+        runHistory:updateLatestPromptRun(job,{
+          outcome:"failed",
+          completedAt:now,
+          durationMs:promptRunDuration((Array.isArray(job.runHistory)?job.runHistory:[]).at(-1),now),
+          resolution:"Owner marked the response failed after manual review.",
+          resolvedAt:now,
+          error:"The current prompt response was marked failed after manual review."
+        }),
+        currentToken:null,responseBaseline:null,uncertaintyKind:null,updatedAt:now,lastError:"The current prompt response was marked failed after manual review."
+      };
     } else {
       return errorResult("For a response review, choose confirm_completed, continue_waiting, stop_job or confirm_failed.");
     }
@@ -398,6 +483,7 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
     updated={
       ...job,
       status:"awaiting_response",
+      runHistory:updateLatestPromptRun(job,{sendConfirmedAt:now,outcome:"awaiting_response",resolution:"Owner confirmed the prompt was sent.",resolvedAt:now,error:""}),
       uncertaintyKind:null,
       sentCount:job.sentCount+1,
       lastSentAt:now,
@@ -407,6 +493,13 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
   } else if(decision==="confirm_not_sent") {
     updated={
       ...job,
+      runHistory:updateLatestPromptRun(job,{
+        outcome:"not_sent_confirmed",
+        completedAt:now,
+        durationMs:promptRunDuration((Array.isArray(job.runHistory)?job.runHistory:[]).at(-1),now),
+        resolution:"Owner confirmed the prompt was not sent.",
+        resolvedAt:now
+      }),
       status:job.stopRequested?"stopped":job.pauseRequested?"paused":"queued",
       currentToken:null,
       responseBaseline:null,
