@@ -5,7 +5,9 @@ import {
   completePromptResponse,
   confirmPromptSent,
   createPromptJob,
+  failPromptDispatch,
   markPromptDispatchUncertain,
+  markPromptResponseUncertain,
   requestPromptPause,
   requestPromptStop,
   resolveUncertainPromptJob,
@@ -21,6 +23,53 @@ const makeJob=(overrides={},now=1000)=>createPromptJob({
   repeatLimit:3,
   ...overrides
 },now);
+
+test("stores a response baseline only after matching send acknowledgement", () => {
+  const started=beginPromptSend([makeJob()],"job-a","token-a",1100);
+  const baseline={
+    assistantCount:2,assistantKey:"turn-2",assistantHash:"abc123",assistantLength:48,
+    userCount:3,sentUserCount:4,sentUserKey:"turn-4"
+  };
+  const accepted=confirmPromptSent(started.jobs,"job-a","token-a",1200,baseline);
+
+  assert.equal(accepted.job.status,"awaiting_response");
+  assert.deepEqual(accepted.job.responseBaseline,baseline);
+});
+
+test("distinguishes uncertain assistant completion from uncertain prompt dispatch", () => {
+  let jobs=[makeJob()];
+  jobs=beginPromptSend(jobs,"job-a","token-a",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","token-a",1200).jobs;
+  const uncertain=markPromptResponseUncertain(jobs,"job-a","token-a","Completion signal was lost.",1300);
+  assert.equal(uncertain.job.status,"needs_review");
+  assert.equal(uncertain.job.uncertaintyKind,"response");
+
+  const resumed=resolveUncertainPromptJob(uncertain.jobs,"job-a","continue_waiting",1400);
+  assert.equal(resumed.job.status,"awaiting_response");
+  assert.equal(resumed.job.currentToken,"token-a");
+});
+
+test("manual confirmation of a completed response advances exactly one repeat", () => {
+  let jobs=[makeJob({repeatLimit:2})];
+  jobs=beginPromptSend(jobs,"job-a","token-a",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","token-a",1200).jobs;
+  jobs=markPromptResponseUncertain(jobs,"job-a","token-a","Could not verify final state.",1300).jobs;
+  const resolved=resolveUncertainPromptJob(jobs,"job-a","confirm_completed",1400);
+
+  assert.equal(resolved.job.completedCount,1);
+  assert.equal(resolved.job.status,"queued");
+  assert.equal(resolved.job.currentToken,null);
+});
+
+test("definitive pre-send failures become terminal without a conversation lock", () => {
+  let jobs=[makeJob({id:"a",conversationId:"one"}),makeJob({id:"b",conversationId:"one"})];
+  jobs=beginPromptSend(jobs,"a","token-a",1100).jobs;
+  const failed=failPromptDispatch(jobs,"a","token-a","Send button was not available.",1200);
+
+  assert.equal(failed.job.status,"failed");
+  assert.equal(failed.job.currentToken,null);
+  assert.deepEqual(selectDispatchablePromptJobs(failed.jobs,3),["b"]);
+});
 
 test("creates finite and unlimited prompt jobs with independent progress counters", () => {
   const finite=makeJob();
