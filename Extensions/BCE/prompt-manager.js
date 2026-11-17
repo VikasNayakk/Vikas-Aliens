@@ -161,6 +161,7 @@ function renderJob(job){
     :(job.repeatLimit>0?Math.min(100,job.completedCount/job.repeatLimit*100):0);
   fill.style.width=percent+"%";
   progress.append(fill);
+  if(job.repeatLimit===null) progress.hidden=true;
   const foot=document.createElement("div");
   foot.className="pm-job-foot";
   foot.textContent=job.repeatLimit===null
