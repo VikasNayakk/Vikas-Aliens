@@ -10,6 +10,13 @@ const TERMINAL_STATES=new Set([
   "failed"
 ]);
 
+const CONVERSATION_LOCK_STATES=new Set([...ACTIVE_CONVERSATION_STATES,"waiting_interval"]);
+const MIN_REPEAT_INTERVAL_SECONDS=30;
+const MAX_REPEAT_INTERVAL_SECONDS=86400;
+function validRepeatInterval(value) {
+  return Number.isInteger(value)&&(value===0||(value>=MIN_REPEAT_INTERVAL_SECONDS&&value<=MAX_REPEAT_INTERVAL_SECONDS));
+}
+
 function validTime(value) {
   return typeof value==="number"&&Number.isFinite(value)&&value>=0;
 }
@@ -35,6 +42,7 @@ export function createPromptJob(input,now=Date.now()) {
   const prompt=typeof input.prompt==="string"?input.prompt.trim():"";
   const tabId=input.tabId;
   const repeatLimit=input.repeatLimit;
+  const repeatIntervalSeconds=input.repeatIntervalSeconds??0;
 
   if(!id||id.length>128) throw new TypeError("Prompt job ID must contain 1–128 characters.");
   if(!conversationId||conversationId.length>256) throw new TypeError("A valid ChatGPT conversation ID is required.");
@@ -42,6 +50,9 @@ export function createPromptJob(input,now=Date.now()) {
   if(!prompt||prompt.length>50000) throw new TypeError("Prompt must contain 1–50,000 characters.");
   if(repeatLimit!==null&&(!Number.isInteger(repeatLimit)||repeatLimit<1||repeatLimit>100000)) {
     throw new TypeError("Repeat limit must be a positive integer or null for unlimited mode.");
+  }
+  if(!validRepeatInterval(repeatIntervalSeconds)) {
+    throw new TypeError("Repeat interval must be 0 (immediate) or 30–86,400 seconds.");
   }
   if(!validTime(now)) throw new TypeError("Creation time must be a non-negative timestamp.");
 
@@ -51,6 +62,9 @@ export function createPromptJob(input,now=Date.now()) {
     tabId,
     prompt,
     repeatLimit,
+    repeatIntervalSeconds,
+    nextRunAt:null,
+    remainingDelayMs:null,
     sentCount:0,
     completedCount:0,
     status:"queued",
@@ -74,7 +88,7 @@ export function selectDispatchablePromptJobs(jobs,maxConcurrentConversations=3) 
   }
 
   const activeJobs=jobs.filter(job=>ACTIVE_CONVERSATION_STATES.has(job?.status));
-  const locked=new Set(activeJobs.map(job=>job.conversationId));
+  const locked=new Set(jobs.filter(job=>CONVERSATION_LOCK_STATES.has(job?.status)).map(job=>job.conversationId));
   const availableSlots=maxConcurrentConversations-activeJobs.length;
   if(availableSlots<=0) return [];
 
@@ -106,7 +120,7 @@ export function beginPromptSend(jobs,jobId,token,now=Date.now()) {
   const locked=jobs.some(other=>
     other.id!==jobId &&
     other.conversationId===job.conversationId &&
-    ACTIVE_CONVERSATION_STATES.has(other.status)
+    CONVERSATION_LOCK_STATES.has(other.status)
   );
   if(locked) return errorResult("This ChatGPT conversation already has an active prompt job.");
 
@@ -167,6 +181,9 @@ export function completePromptResponse(jobs,jobId,token,now=Date.now()) {
   else if(job.pauseRequested) status="paused";
   else if(job.repeatLimit!==null&&completedCount>=job.repeatLimit) status="completed";
 
+  const repeatIntervalSeconds=validRepeatInterval(job.repeatIntervalSeconds)?job.repeatIntervalSeconds:0;
+  const nextRunAt=status==="queued"&&repeatIntervalSeconds>0?now+repeatIntervalSeconds*1000:null;
+  if(nextRunAt!==null) status="waiting_interval";
   const updated={
     ...job,
     status,
@@ -176,6 +193,8 @@ export function completePromptResponse(jobs,jobId,token,now=Date.now()) {
     uncertaintyKind:null,
     pauseRequested:false,
     stopRequested:false,
+    nextRunAt,
+    remainingDelayMs:null,
     lastCompletedAt:now,
     updatedAt:now
   };
@@ -188,10 +207,13 @@ export function requestPromptPause(jobs,jobId,now=Date.now()) {
   if(TERMINAL_STATES.has(job.status)) return errorResult("A terminal prompt job cannot be paused.");
   if(!validTime(now)) return errorResult("Pause time is invalid.");
 
+  const waitingInterval=job.status==="waiting_interval";
   const updated={
     ...job,
-    status:job.status==="queued"?"paused":job.status,
+    status:job.status==="queued"||waitingInterval?"paused":job.status,
     pauseRequested:ACTIVE_CONVERSATION_STATES.has(job.status)?true:false,
+    nextRunAt:waitingInterval?null:job.nextRunAt??null,
+    remainingDelayMs:waitingInterval?Math.max(0,(job.nextRunAt||now)-now):job.remainingDelayMs??null,
     updatedAt:now
   };
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
@@ -203,10 +225,13 @@ export function requestPromptStop(jobs,jobId,now=Date.now()) {
   if(TERMINAL_STATES.has(job.status)) return errorResult("Prompt job is already terminal.");
   if(!validTime(now)) return errorResult("Stop time is invalid.");
 
+  const active=ACTIVE_CONVERSATION_STATES.has(job.status);
   const updated={
     ...job,
-    status:ACTIVE_CONVERSATION_STATES.has(job.status)?job.status:"stopped",
-    stopRequested:ACTIVE_CONVERSATION_STATES.has(job.status),
+    status:active?job.status:"stopped",
+    stopRequested:active,
+    nextRunAt:null,
+    remainingDelayMs:null,
     updatedAt:now
   };
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
@@ -218,10 +243,14 @@ export function resumePromptJob(jobs,jobId,now=Date.now()) {
   if(job.status!=="paused") return errorResult("Only a paused prompt job can be resumed.");
   if(!validTime(now)) return errorResult("Resume time is invalid.");
 
+  const remainingDelayMs=validTime(job.remainingDelayMs)?job.remainingDelayMs:0;
+  const waiting=remainingDelayMs>0;
   const updated={
     ...job,
-    status:"queued",
+    status:waiting?"waiting_interval":"queued",
     pauseRequested:false,
+    nextRunAt:waiting?now+remainingDelayMs:null,
+    remainingDelayMs:null,
     updatedAt:now,
     lastError:""
   };
@@ -282,10 +311,30 @@ export function failPromptDispatch(jobs,jobId,token,error,now=Date.now()) {
     currentToken:null,
     responseBaseline:null,
     uncertaintyKind:null,
+    nextRunAt:null,
+    remainingDelayMs:null,
     lastError:String(error||"The prompt was not sent.").slice(0,500),
     updatedAt:now
   };
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
+}
+
+export function releaseDuePromptJobs(jobs,now=Date.now()) {
+  if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
+  if(!validTime(now)) return errorResult("Interval release time is invalid.");
+  const releasedJobIds=[];
+  const updatedJobs=jobs.map(job=>{
+    if(job?.status!=="waiting_interval") return job;
+    if(!validTime(job.nextRunAt)) return {
+      ...job,status:"failed",nextRunAt:null,remainingDelayMs:null,
+      lastError:"The saved repeat interval schedule is invalid. This job was stopped safely and was not sent again.",
+      updatedAt:now
+    };
+    if(job.nextRunAt>now) return job;
+    releasedJobIds.push(job.id);
+    return {...job,status:"queued",nextRunAt:null,remainingDelayMs:null,updatedAt:now};
+  });
+  return {ok:true,jobs:updatedJobs,releasedJobIds};
 }
 
 export function recoverPromptJobsAfterWorkerRestart(jobs,now=Date.now()) {
@@ -381,7 +430,7 @@ export function requestStopAllPromptJobs(jobs,now=Date.now()) {
   let reviewUnchanged=0;
   const updatedJobs=jobs.map(job=>{
     if(!job||TERMINAL_STATES.has(job.status)) return job;
-    if(job.status==="queued"||job.status==="paused") {
+    if(job.status==="queued"||job.status==="paused"||job.status==="waiting_interval") {
       queuedStopped++;
       return {
         ...job,

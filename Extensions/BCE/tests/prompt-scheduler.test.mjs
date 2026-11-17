@@ -14,7 +14,8 @@ import {
   resolveUncertainPromptJob,
   resumePromptJob,
   selectDispatchablePromptJobs,
-  requestStopAllPromptJobs
+  requestStopAllPromptJobs,
+  releaseDuePromptJobs
 } from "../prompt-scheduler.mjs";
 
 const makeJob=(overrides={},now=1000)=>createPromptJob({
@@ -346,4 +347,91 @@ test("stop-all rejects invalid input and timestamps without mutating source jobs
   assert.equal(requestStopAllPromptJobs(null,2000).ok,false);
   assert.equal(requestStopAllPromptJobs(jobs,-1).ok,false);
   assert.equal(jobs[0].status,"queued");
+});
+
+test("stores a repeat interval with a zero default and validates supported bounds",()=>{
+  assert.equal(makeJob().repeatIntervalSeconds,0);
+  assert.equal(makeJob({repeatIntervalSeconds:30}).repeatIntervalSeconds,30);
+  assert.equal(makeJob({repeatIntervalSeconds:86400}).repeatIntervalSeconds,86400);
+  assert.throws(()=>makeJob({repeatIntervalSeconds:1}),/30–86,400 seconds/i);
+  assert.throws(()=>makeJob({repeatIntervalSeconds:29}),/30–86,400 seconds/i);
+  assert.throws(()=>makeJob({repeatIntervalSeconds:86401}),/30–86,400 seconds/i);
+  assert.throws(()=>makeJob({repeatIntervalSeconds:30.5}),/30–86,400 seconds/i);
+});
+test("starts the repeat interval only after a confirmed assistant response completes",()=>{
+  let jobs=[makeJob({repeatIntervalSeconds:60,repeatLimit:3})];
+  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
+  const completed=completePromptResponse(jobs,"job-a","t1",5000);
+  assert.equal(completed.job.status,"waiting_interval");
+  assert.equal(completed.job.nextRunAt,65000);
+  assert.equal(completed.job.completedCount,1);
+});
+test("interval-waiting jobs lock only their own conversation and do not consume a dispatch slot",()=>{
+  const waiting={...makeJob({id:"waiting",conversationId:"one",repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:90000};
+  const same=makeJob({id:"same",conversationId:"one"},20);
+  const other=makeJob({id:"other",conversationId:"two"},30);
+  assert.deepEqual(selectDispatchablePromptJobs([waiting,same,other],1),["other"]);
+});
+test("releases only interval jobs whose persisted due timestamp has arrived",()=>{
+  const waiting={...makeJob({repeatIntervalSeconds:30}),status:"waiting_interval",nextRunAt:5000};
+  const early=releaseDuePromptJobs([waiting],4999);
+  assert.deepEqual(early.releasedJobIds,[]);
+  assert.equal(early.jobs[0].status,"waiting_interval");
+  const due=releaseDuePromptJobs(early.jobs,5000);
+  assert.deepEqual(due.releasedJobIds,["job-a"]);
+  assert.equal(due.jobs[0].status,"queued");
+  assert.equal(due.jobs[0].nextRunAt,null);
+});
+test("pause preserves the remaining interval and resume rebuilds an absolute due time",()=>{
+  const waiting={...makeJob({repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:70000};
+  const paused=requestPromptPause([waiting],"job-a",50000);
+  assert.equal(paused.job.status,"paused");
+  assert.equal(paused.job.nextRunAt,null);
+  assert.equal(paused.job.remainingDelayMs,20000);
+  const resumed=resumePromptJob(paused.jobs,"job-a",80000);
+  assert.equal(resumed.job.status,"waiting_interval");
+  assert.equal(resumed.job.nextRunAt,100000);
+  assert.equal(resumed.job.remainingDelayMs,null);
+});
+test("resuming a paused interval whose remaining delay reached zero queues immediately",()=>{
+  const paused={...makeJob({repeatIntervalSeconds:60}),status:"paused",remainingDelayMs:0};
+  const resumed=resumePromptJob([paused],"job-a",90000);
+  assert.equal(resumed.job.status,"queued");
+  assert.equal(resumed.job.nextRunAt,null);
+});
+test("stopping an interval-waiting job clears its future dispatch timestamp",()=>{
+  const waiting={...makeJob({repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:70000};
+  const stopped=requestPromptStop([waiting],"job-a",50000);
+  assert.equal(stopped.job.status,"stopped");
+  assert.equal(stopped.job.nextRunAt,null);
+  assert.equal(stopped.job.remainingDelayMs,null);
+});
+test("finite final completion and pause-after-response do not schedule another interval",()=>{
+  let jobs=[makeJob({repeatLimit:1,repeatIntervalSeconds:60})];
+  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
+  const final=completePromptResponse(jobs,"job-a","t1",5000);
+  assert.equal(final.job.status,"completed");
+  assert.equal(final.job.nextRunAt,null);
+  jobs=[makeJob({repeatLimit:3,repeatIntervalSeconds:60})];
+  jobs=beginPromptSend(jobs,"job-a","t2",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","t2",1200).jobs;
+  jobs=requestPromptPause(jobs,"job-a",1300).jobs;
+  const paused=completePromptResponse(jobs,"job-a","t2",5000);
+  assert.equal(paused.job.status,"paused");
+  assert.equal(paused.job.nextRunAt,null);
+});
+test("stop-all stops interval-waiting jobs instead of leaving an alarm armed",()=>{
+  const waiting={...makeJob({repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:70000};
+  const result=requestStopAllPromptJobs([waiting],50000);
+  assert.equal(result.summary.queuedStopped,1);
+  assert.equal(result.jobs[0].status,"stopped");
+  assert.equal(result.jobs[0].nextRunAt,null);
+});
+test("an invalid persisted interval timestamp fails safely rather than dispatching",()=>{
+  const waiting={...makeJob({repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:null};
+  const result=releaseDuePromptJobs([waiting],50000);
+  assert.equal(result.jobs[0].status,"failed");
+  assert.match(result.jobs[0].lastError,/schedule is invalid/i);
 });

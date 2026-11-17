@@ -219,6 +219,7 @@ async function refreshConversations(){
 function statusLabel(status){
   return ({
     queued:"Queued",
+    waiting_interval:"Waiting interval",
     sending:"Sending",
     awaiting_response:"Waiting for response",
     needs_review:"Needs review",
@@ -254,7 +255,8 @@ function renderJob(job){
   const meta=document.createElement("div");
   meta.className="pm-job-meta";
   const repeat=job.repeatLimit===null?"Unlimited":String(job.repeatLimit)+" runs";
-  meta.textContent=repeat+" · "+job.completedCount+" completed · "+job.sentCount+" sent";
+  const interval=job.repeatIntervalSeconds>0?" · "+job.repeatIntervalSeconds+"s between repeats":" · no interval";
+  meta.textContent=repeat+" · "+job.completedCount+" completed · "+job.sentCount+" sent"+interval;
   const prompt=document.createElement("div");
   prompt.className="pm-job-prompt";
   prompt.textContent=job.prompt;
@@ -273,6 +275,8 @@ function renderJob(job){
   foot.textContent=job.repeatLimit===null
     ?job.completedCount+" responses completed · continues until stopped"
     :job.completedCount+" of "+job.repeatLimit+" responses completed";
+  if(job.status==="waiting_interval"&&Number.isFinite(job.nextRunAt)) foot.textContent+=" · next run "+new Date(job.nextRunAt).toLocaleString();
+  else if(job.status==="paused"&&Number.isFinite(job.remainingDelayMs)&&job.remainingDelayMs>0) foot.textContent+=" · "+Math.ceil(job.remainingDelayMs/1000)+"s remaining before next run";
 
   card.append(top,meta,prompt,progress,foot);
 
@@ -285,7 +289,7 @@ function renderJob(job){
 
   const actions=document.createElement("div");
   actions.className="pm-actions";
-  if(job.status==="queued"){
+  if(job.status==="queued"||job.status==="waiting_interval"){
     actions.append(createActionButton("Pause",job.id,"pause",null));
     actions.append(createActionButton("Stop",job.id,"stop",null,"danger"));
   }else if(job.status==="paused"){
@@ -319,7 +323,7 @@ function renderJobs(){
   $("queuedCount").textContent=String(queued);
   $("activeCount").textContent=String(active);
   $("reviewCount").textContent=String(review);
-  const cancellable=jobs.some(job=>["queued","paused","sending","awaiting_response"].includes(job.status));
+  const cancellable=jobs.some(job=>["queued","waiting_interval","paused","sending","awaiting_response"].includes(job.status));
   $("cancelAllJobs").disabled=!cancellable;
   if(!jobs.length){
     const empty=document.createElement("div");
@@ -444,7 +448,7 @@ $("selectAll").addEventListener("change",()=>{
 $("refreshConversations").addEventListener("click",refreshConversations);
 $("refreshJobs").addEventListener("click",refreshJobs);
 $("cancelAllJobs").addEventListener("click",async()=>{
-  const cancellable=jobs.filter(job=>["queued","paused","sending","awaiting_response"].includes(job.status)).length;
+  const cancellable=jobs.filter(job=>["queued","waiting_interval","paused","sending","awaiting_response"].includes(job.status)).length;
   if(!cancellable) return;
   if(!window.confirm("Stop all "+cancellable+" cancellable prompt job(s)? Queued jobs will stop immediately. Active responses will be allowed to finish, then their repeats will stop. Jobs needing manual review will remain locked until resolved.")) return;
   const button=$("cancelAllJobs");
@@ -469,15 +473,20 @@ $("createJobs").addEventListener("click",async()=>{
   if(!prompt){messageStatus("Enter a prompt first.",true);return;}
   if(!tabIds.length){messageStatus("Select at least one ChatGPT conversation.",true);return;}
   const repeatLimit=$("unlimited").checked?null:Number($("repeatCount").value);
+  const repeatIntervalSeconds=Number($("repeatInterval").value);
   if(repeatLimit!==null&&(!Number.isInteger(repeatLimit)||repeatLimit<1||repeatLimit>100000)){
     messageStatus("Repeat count must be between 1 and 100,000.",true);
+    return;
+  }
+  if(!Number.isInteger(repeatIntervalSeconds)||!(repeatIntervalSeconds===0||(repeatIntervalSeconds>=30&&repeatIntervalSeconds<=86400))){
+    messageStatus("Interval must be 0 (immediate) or between 30 and 86,400 seconds.",true);
     return;
   }
   setBusy(true);
   messageStatus("Creating "+tabIds.length+" prompt job(s)…");
   const results=await Promise.all(tabIds.map(async tabId=>{
     try{
-      const result=await request("CREATE_CHATGPT_PROMPT_JOB",{tabId,prompt,repeatLimit});
+      const result=await request("CREATE_CHATGPT_PROMPT_JOB",{tabId,prompt,repeatLimit,repeatIntervalSeconds});
       return {ok:true,title:conversations.find(item=>item.tabId===tabId)?.title||result.job.conversationId};
     }catch(error){
       return {ok:false,error:error.message};

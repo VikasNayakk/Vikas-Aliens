@@ -16,7 +16,8 @@ import {
   resolveUncertainPromptJob,
   resumePromptJob,
   selectDispatchablePromptJobs,
-  requestStopAllPromptJobs
+  requestStopAllPromptJobs,
+  releaseDuePromptJobs
 } from "./prompt-scheduler.mjs";
 import {
   deletePromptTemplate,
@@ -34,11 +35,16 @@ const PROMPT_JOBS_KEY = "chatgptPromptJobs";
 const PROMPT_TEMPLATES_KEY = "chatgptPromptTemplates";
 const PROMPT_MAX_CONCURRENT = 3;
 const PROMPT_MAX_ACTIVE_JOBS = 50;
+const PROMPT_INTERVAL_ALARM_PREFIX = "chatgpt-prompt-repeat:";
 let promptMutationQueue = Promise.resolve();
 let promptTemplateMutationQueue = Promise.resolve();
 let promptDispatching = false;
 let promptRuntimeRecovered = false;
 let promptRuntimeRecovery = null;
+
+chrome.alarms.onAlarm.addListener(alarm=>{
+  if(typeof alarm?.name==="string"&&alarm.name.startsWith(PROMPT_INTERVAL_ALARM_PREFIX)) dispatchPromptJobs().catch(()=>{});
+});
 
 const TEAMS_LIVE_KEY = "teamsLiveEnabled";
 const TEAMS_GROUPS_KEY = "teamsSelectedGroups";
@@ -143,6 +149,22 @@ async function mutatePromptJobs(mutator) {
   promptMutationQueue=operation.then(()=>undefined,()=>undefined);
   return operation;
 }
+async function refreshPromptIntervalAlarms() {
+  const now=Date.now();
+  const released=await mutatePromptJobs(jobs=>releaseDuePromptJobs(jobs,now));
+  if(!released?.ok) throw new Error(released?.error||"Could not refresh prompt interval state.");
+  const waiting=(await getStoredPromptJobs()).filter(job=>job.status==="waiting_interval");
+  const expected=new Set(waiting.map(job=>PROMPT_INTERVAL_ALARM_PREFIX+job.id));
+  const alarms=await chrome.alarms.getAll();
+  for(const alarm of alarms) {
+    if(alarm.name.startsWith(PROMPT_INTERVAL_ALARM_PREFIX)&&!expected.has(alarm.name)) chrome.alarms.clear(alarm.name);
+  }
+  for(const job of waiting) {
+    if(!Number.isFinite(job.nextRunAt)||job.nextRunAt<=now) continue;
+    chrome.alarms.create(PROMPT_INTERVAL_ALARM_PREFIX+job.id,{when:job.nextRunAt});
+  }
+}
+
 async function publishPromptJobs() {
   const jobs=await getStoredPromptJobs();
   const state={
@@ -285,6 +307,7 @@ async function dispatchOnePromptJob(jobId) {
 }
 async function dispatchPromptJobs() {
   await ensurePromptRuntimeRecovered();
+  await refreshPromptIntervalAlarms();
   if(promptDispatching) return;
   promptDispatching=true;
   try {
@@ -293,6 +316,7 @@ async function dispatchPromptJobs() {
     await Promise.all(selected.map(jobId=>dispatchOnePromptJob(jobId)));
   } finally {
     promptDispatching=false;
+    await refreshPromptIntervalAlarms();
     await publishPromptJobs();
     const pending=selectDispatchablePromptJobs(await getStoredPromptJobs(),PROMPT_MAX_CONCURRENT);
     if(pending.length) setTimeout(()=>dispatchPromptJobs().catch(()=>{}),0);
@@ -303,10 +327,14 @@ async function createChatGPTPromptJob(request) {
   const tabId=request?.tabId;
   const prompt=typeof request?.prompt==="string"?request.prompt.trim():"";
   const repeatLimit=request?.repeatLimit;
+  const repeatIntervalSeconds=request?.repeatIntervalSeconds??0;
   if(!Number.isInteger(tabId)||tabId<0) throw new Error("Select an open ChatGPT conversation tab.");
   if(!prompt||prompt.length>50000) throw new Error("Prompt must contain 1–50,000 characters.");
   if(repeatLimit!==null&&(!Number.isInteger(repeatLimit)||repeatLimit<1||repeatLimit>100000)) {
     throw new Error("Repeat count must be 1–100,000, or choose unlimited mode.");
+  }
+  if(!Number.isInteger(repeatIntervalSeconds)||!(repeatIntervalSeconds===0||(repeatIntervalSeconds>=30&&repeatIntervalSeconds<=86400))) {
+    throw new Error("Repeat interval must be 0 (immediate) or 30–86,400 seconds.");
   }
 
   const info=await getChatGPTTabInfo(tabId);
@@ -327,7 +355,8 @@ async function createChatGPTPromptJob(request) {
       conversationId:info.conversationId,
       tabId,
       prompt,
-      repeatLimit
+      repeatLimit,
+      repeatIntervalSeconds
     });
     const activeJobs=jobs.filter(item=>!["completed","stopped","failed"].includes(item.status));
     const recentTerminal=jobs.filter(item=>["completed","stopped","failed"].includes(item.status)&&
@@ -344,6 +373,7 @@ async function stopAllPromptJobs() {
   await ensurePromptRuntimeRecovered();
   const result=await mutatePromptJobs(jobs=>requestStopAllPromptJobs(jobs,Date.now()));
   if(!result?.ok) throw new Error(result?.error||"Could not stop all prompt jobs.");
+  await refreshPromptIntervalAlarms();
   await publishPromptJobs();
   return result.summary;
 }
@@ -358,6 +388,7 @@ async function mutatePromptJob(jobId,action,decision) {
     return {ok:false,error:"Unsupported prompt-job action."};
   });
   if(!result?.ok) throw new Error(result?.error||"Could not update this prompt job.");
+  await refreshPromptIntervalAlarms();
 
   if(action==="resolve"&&decision==="confirm_not_sent") {
     const job=result.job;

@@ -113,3 +113,5 @@ textarea:focus,input:focus-visible{border-color:var(--pm-accent);box-shadow:0 0 
 .pm-template-actions .pm-action:disabled,.pm-template-select-row .pm-action:disabled{opacity:.4;cursor:not-allowed}
 .pm-template-panel .pm-inline-status{margin-top:5px}
 @media(max-width:600px){.pm-template-select-row{align-items:stretch;flex-direction:column}.pm-template-variables{grid-template-columns:1fr}}
+
+.pm-status.waiting_interval{background:#fff6e9;color:var(--pm-amber)}

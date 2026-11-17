@@ -157,13 +157,13 @@ The speech queue phase values currently used are `group`, `gap`, `message` and `
 |---|---|---|
 | `GET_CHATGPT_CONVERSATIONS` | None | `{ ok, conversations[] }`; one row per unique conversation ID |
 | `GET_CHATGPT_PROMPT_JOBS` | None | `{ ok, jobs[] }` |
-| `CREATE_CHATGPT_PROMPT_JOB` | `tabId: number, prompt: string, repeatLimit: positive integer or null` | `{ ok, job, state }` |
+| `CREATE_CHATGPT_PROMPT_JOB` | `tabId: number, prompt: string, repeatLimit: positive integer or null, repeatIntervalSeconds?: 0 or 30â€“86,400` | `{ ok, job, state }` |
 | `PAUSE_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
 | `STOP_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
 | `RESUME_CHATGPT_PROMPT_JOB` | `jobId: string` | `{ ok, job, state }` |
 | `RESOLVE_CHATGPT_PROMPT_JOB` | `jobId: string, decision: string` | `{ ok, job, state }` |
 
-A repeat limit of `null` means unlimited until the owner stops the job. A finite job completes only after the configured number of assistant responses has been accepted by the completion monitor. The service worker permits at most three different conversations to be dispatched concurrently and locks each conversation while a job is `sending`, `awaiting_response` or `needs_review`.
+A repeat limit of `null` means unlimited until the owner stops the job. A finite job completes only after the configured number of assistant responses has been accepted by the completion monitor. `repeatIntervalSeconds` defaults to `0` (immediate); otherwise it must be between 30 seconds and 24 hours. The interval begins after confirmed response completion, not after sending. Its absolute due timestamp is persisted and scheduled through Chrome alarms, so service-worker suspension does not depend on an in-memory timer. A job in `waiting_interval` keeps its conversation lock but does not consume one of the three active dispatch slots. Pausing preserves the remaining delay; stopping and Cancel All clear the scheduled run.
 
 ### Prompt template operations
 
@@ -196,7 +196,7 @@ The response baseline stores message counts, DOM keys, fingerprints and lengthsâ
 
 ### Prompt job storage
 
-`chatgptPromptJobs` stores the prompt text, conversation / tab identity, finite or unlimited repeat limit, sent and completed counters, current send token, response baseline, pause / stop flags, status, timestamps and bounded error details. Data remains in Chrome extension local storage and is not encrypted by BCE.
+`chatgptPromptJobs` stores the prompt text, conversation / tab identity, finite or unlimited repeat limit, repeat interval, persisted next-run timestamp / paused remaining delay, sent and completed counters, current send token, response baseline, pause / stop flags, status, timestamps and bounded error details. Data remains in Chrome extension local storage and is not encrypted by BCE.
 
 `chatgptPromptTemplates` stores the reusable template records, including ID, name, source content, extracted variable names, enabled state and creation / update timestamps. It is local extension storage and is not encrypted by BCE.
 

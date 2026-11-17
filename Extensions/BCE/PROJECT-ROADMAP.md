@@ -109,7 +109,7 @@ The currently active toolbar popup is a Teams reader. The existing ChatGPT extra
 - Approval inbox and task lifecycle.
 - Teams task/assignment classification addressed to the owner.
 - Real-browser validation of the ChatGPT scheduler's DOM send/completion heuristics and restart recovery.
-- Saved prompt templates, per-job repeat intervals and Thinking-mode selection.
+- Thinking-mode selection.
 - Server-confirmed assistant completion; current completion is a conservative DOM heuristic.
 - Workflow discovery, workflow authoring interview, generation brief or generated-workflow validation.
 - GitHub workflow publish/fetch/update pipeline.
@@ -266,7 +266,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Add saved prompt templates with names, variables and enabled/disabled state. The extension stores up to 100 named templates locally, validates unique names and variable syntax, and supports insert / update / enable / disable / delete; all template model tests pass in CI.
 - [x] Allow each prompt job to select one or more exact ChatGPT conversations.
 - [x] Add finite repeat count and unlimited-until-stopped modes.
-- [ ] Add repeat interval / dispatch policy configuration.
+- [x] Add repeat interval / dispatch policy configuration.
 - [x] Persist job state, send token, response baseline, repeat counters and conversation identity.
 - [x] Implement one serial queue and exclusive lock per conversation.
 - [x] Allow independent conversation queues to run concurrently (maximum 3 by default).
@@ -355,7 +355,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
-- Phase 4 ChatGPT prompt automation: **11 of 16 implementation tasks complete (69%)**; repeat intervals, browser smoke testing, detailed run history, broader error recovery and Thinking-mode control remain pending.
+- Phase 4 ChatGPT prompt automation: **12 of 16 implementation tasks complete (75%)**; browser smoke testing, detailed run history, broader error recovery and Thinking-mode control remain pending.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 21 `.js` / `.mjs` files in the current audited folder.
 - BCE unit tests: **57 / 57 passed** in GitHub Actions, including 3 global-cancel tests and 10 prompt-template lifecycle / variable tests.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
@@ -376,7 +376,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-A simple task-count meter (equal weight per checklist item across Phases 0–8) is **29 / 96 complete (30.2%) and 67 / 96 pending (69.8%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
+A simple task-count meter (equal weight per checklist item across Phases 0–8) is **30 / 96 complete (31.3%) and 66 / 96 pending (68.7%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 
