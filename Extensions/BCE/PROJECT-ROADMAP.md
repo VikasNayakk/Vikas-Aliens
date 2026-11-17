@@ -257,13 +257,13 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
   - Jobs in `needs_review` remain locked and require explicit manual resolution; cancel-all does not guess whether a prompt was sent or whether a response completed.
   - Terminal jobs remain unchanged.
   - Unit tests cover mixed states, lock preservation and invalid input.
-  - Global cancel-all validation in the full extension test/CI run is pending; this task is implemented but not yet marked test-verified.
+  - Verified by the full CI run on commit `0ad863b69705c635e082d078f932c554598fa55f`.
 
 **Extension-only implementation status:** the scheduler state model, service-worker orchestration, ChatGPT page adapter, toolbar entry point and prompt-manager UI are now connected. Jobs persist in `chrome.storage.local`; the service worker and ChatGPT page adapter both enforce one active job per conversation, and the service worker allows a maximum of three different conversations to be dispatched concurrently. Finite and unlimited jobs, per-job pause/resume/stop, manual uncertainty review, and worker-restart recovery are implemented and covered by unit tests.
 
 **Important verification boundary:** the ChatGPT page adapter uses composer / Send DOM controls and a conservative generation-state heuristic (new assistant message plus no visible generation signal and five seconds of stable content). This is not a server-confirmed completion signal. The extension has passed static / unit CI, but real Chrome + ChatGPT browser smoke tests have not been performed.
 
-- [x] Add saved prompt templates with names, variables and enabled/disabled state. The extension stores up to 100 named templates locally, validates unique names and variable syntax, and supports insert / update / enable / disable / delete.
+- [x] Add saved prompt templates with names, variables and enabled/disabled state. The extension stores up to 100 named templates locally, validates unique names and variable syntax, and supports insert / update / enable / disable / delete; all template model tests pass in CI.
 - [x] Allow each prompt job to select one or more exact ChatGPT conversations.
 - [x] Add finite repeat count and unlimited-until-stopped modes.
 - [ ] Add repeat interval / dispatch policy configuration.
@@ -356,8 +356,8 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
 - Phase 4 ChatGPT prompt automation: **11 of 16 implementation tasks complete (69%)**; repeat intervals, browser smoke testing, detailed run history, broader error recovery and Thinking-mode control remain pending.
-- BCE JavaScript / ES-module syntax validation: last verified baseline passed for 19 `.js` / `.mjs` files; two new `.mjs` files have since been added / changed and require the next full check.
-- BCE unit tests: last verified baseline **44 / 44 passed**. Since that run, 12 additional tests were added (3 global-cancel tests and 9 prompt-template tests); the expanded suite has not yet been executed.
+- BCE JavaScript / ES-module syntax validation: **passed** for all 21 `.js` / `.mjs` files in the current audited folder.
+- BCE unit tests: **56 / 56 passed** in GitHub Actions, including 3 global-cancel tests and 9 prompt-template lifecycle / variable tests.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
 - Local HTML asset validation: **passed** (4 pages and their local script / stylesheet references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
@@ -366,7 +366,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - ChatGPT prompt manager: **extension-side UI and service-worker integration are implemented** for selected open conversations, finite / unlimited jobs, per-conversation serialization, three-way cross-conversation concurrency, per-job controls and manual uncertainty review.
 - ChatGPT page adapter: **registered and statically validated**; explicit per-conversation page locks prevent a second job while a response monitor is active. Live DOM selectors and generation completion heuristic are **not yet verified in a real Chrome / ChatGPT session**.
 - Prompt-job worker recovery: **implemented and unit-tested**; a persisted send with uncertain outcome moves to manual review rather than being resent automatically.
-- Current-commit whitespace validation: **passed**.
+- Current-commit whitespace validation: **passed**.\n- Latest fully verified commit: `0ad863b69705c635e082d078f932c554598fa55f` ([GitHub Actions run #133](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44100529192)).
 - Local developer command: **`npm run check` passed**; CI runs the same command without third-party dependencies.
 - Privacy and runtime documentation: **updated** for ChatGPT prompt storage, local page processing and current implementation limits.
 - Real Chrome / Teams / ChatGPT browser smoke verification: **0%** (not performed in this repository session).
