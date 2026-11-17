@@ -211,7 +211,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [ ] Add a reproducible local development/test setup without changing existing user data.
 - [x] Add CI validation for JavaScript / ES-module syntax and Manifest V3 referenced files.
 - [x] Document active `chrome.runtime` message contracts in `MESSAGE-CONTRACTS.md`.
-- [ ] Add schema validation for messages received by the service worker.
+- [x] Validate Teams message payload types, field sizes, required routing fields and audio URL protocols at the service-worker boundary.
 - [ ] Fix group identity to prefer stable Teams conversation IDs; retain safe migration for saved groups.
 - [ ] Review and remove or deliberately reconnect obsolete monitor-tab helpers.
 - [ ] Decide whether the side panel becomes the primary workspace; wire it intentionally or retire its unreachable code.
@@ -342,10 +342,11 @@ The target product is much larger than the existing Voice Speakers release. Stat
 **Current verified baseline (2026-11-17):**
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
-- Phase 1 foundation stabilization: **5 of 13 tasks complete (38%)**; 8 tasks remain.
-- BCE JavaScript / ES-module syntax validation: **passed** for all 9 `.js` / `.mjs` files in the audited folder.
-- Speech queue utility tests: **5 / 5 passed** (normalization, state preservation, stable-ID de-duplication and pending counts).
+- Phase 1 foundation stabilization: **6 of 13 tasks complete (46%)**; 7 tasks remain.
+- BCE JavaScript / ES-module syntax validation: **passed** for all 11 `.js` / `.mjs` files in the audited folder.
+- BCE unit tests: **10 / 10 passed** (speech queue normalization / recovery helpers and Teams message payload validation).
 - Manifest V3 JSON and referenced-file validation: **passed** (4 active references checked).
+- Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
 - Current-commit whitespace validation: **passed**.
 - Real Chrome / Teams browser smoke verification: **0%** (not run in this repository review).
 - BCE-side external-AI connector bridge: **0% implemented** (AI model, training and reasoning are outside this extension workstream).
