@@ -64,7 +64,7 @@ test("does not merge a legacy same-name group from a different tab", () => {
   },12);
 
   assert.equal(result.ok,false);
-  assert.match(result.error,/remove this chat again/i);
+  assert.match(result.error,/add this chat again/i);
 });
 
 test("rejects a group when its stable ID is temporarily unavailable", () => {
