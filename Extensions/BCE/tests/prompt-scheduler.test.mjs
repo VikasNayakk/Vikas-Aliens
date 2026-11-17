@@ -144,9 +144,11 @@ test("unlimited jobs keep scheduling until explicitly stopped", () => {
   let current = [job({ repeatMode: "unlimited" })];
   for (let index = 1; index <= 3; index++) {
     const dispatchId = "dispatch-" + index;
-    const result = claim(current, dispatchId, 100 + (index - 1) * 1000);
-    current = confirmPromptSent(result.jobs, "job-1", dispatchId, 101 + (index - 1) * 1000);
-    current = completeAssistantResponse(current, "job-1", dispatchId, 102 + (index - 1) * 1000);
+    const now = 100 + (index - 1) * 1002;
+    const result = claim(current, dispatchId, now);
+    assert.ok(result.claimedJob, "the next repeat must not be scheduled before its due time");
+    current = confirmPromptSent(result.jobs, "job-1", dispatchId, now + 1);
+    current = completeAssistantResponse(current, "job-1", dispatchId, now + 2);
   }
   assert.equal(current[0].sentCount, 3);
   assert.equal(current[0].status, "queued");

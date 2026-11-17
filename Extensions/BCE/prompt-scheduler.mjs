@@ -179,6 +179,13 @@ export function createPromptJob(input) {
   if (!isRecord(input)) fail("Prompt job input must be an object.");
   const createdAt = requireTime(input.createdAt, "createdAt");
   const repeatMode = input.repeatMode;
+  if (
+    repeatMode === "unlimited" &&
+    input.repeatCount !== undefined &&
+    input.repeatCount !== null
+  ) {
+    fail("Unlimited jobs must not specify a finite repeatCount.");
+  }
   const repeatCount = repeatMode === "unlimited" ? null : input.repeatCount;
   return validatePromptJob({
     jobId: input.jobId,
@@ -191,7 +198,7 @@ export function createPromptJob(input) {
     status: "queued",
     createdAt,
     updatedAt: createdAt,
-    nextDispatchAt: createdAt,
+    nextDispatchAt: input.nextDispatchAt ?? createdAt,
     dispatchId: null,
     pauseRequested: false,
     stopRequested: false,
