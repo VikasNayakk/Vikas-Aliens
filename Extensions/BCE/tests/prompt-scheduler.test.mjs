@@ -1,180 +1,240 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  beginPromptSend,
-  completePromptResponse,
+  claimNextPromptJob,
+  completeAssistantResponse,
   confirmPromptSent,
   createPromptJob,
-  markPromptDispatchUncertain,
-  requestPromptPause,
-  requestPromptStop,
-  resolveUncertainPromptJob,
+  markPromptUncertain,
+  pausePromptJob,
+  promptConversationLocks,
+  recoverPromptJobs,
+  resolvePromptUncertainty,
   resumePromptJob,
-  selectDispatchablePromptJobs
+  stopPromptJob,
+  validatePromptJob
 } from "../prompt-scheduler.mjs";
 
-const makeJob=(overrides={},now=1000)=>createPromptJob({
-  id:"job-a",
-  conversationId:"conversation-a",
-  tabId:10,
-  prompt:"Continue the approved task.",
-  repeatLimit:3,
-  ...overrides
-},now);
+function job(overrides = {}) {
+  return createPromptJob({
+    jobId: "job-1",
+    conversationId: "conversation-a",
+    prompt: "Prepare the requested report.",
+    repeatMode: "finite",
+    repeatCount: 2,
+    intervalMs: 1000,
+    createdAt: 100,
+    ...overrides
+  });
+}
 
-test("creates finite and unlimited prompt jobs with independent progress counters", () => {
-  const finite=makeJob();
-  const unlimited=makeJob({id:"job-b",repeatLimit:null});
+function claim(jobs, dispatchId = "dispatch-1", now = 100, max = 2) {
+  return claimNextPromptJob(jobs, {
+    now,
+    dispatchId,
+    maxConcurrentConversations: max
+  });
+}
 
-  assert.equal(finite.status,"queued");
-  assert.equal(finite.repeatLimit,3);
-  assert.equal(finite.completedCount,0);
-  assert.equal(finite.sentCount,0);
-  assert.equal(unlimited.repeatLimit,null);
+test("creates a finite job with a validated initial state", () => {
+  const created = job();
+  assert.equal(created.status, "queued");
+  assert.equal(created.sentCount, 0);
+  assert.equal(created.repeatCount, 2);
+  assert.equal(created.nextDispatchAt, 100);
+  assert.equal(created.dispatchId, null);
 });
 
-test("rejects empty prompt, missing conversation and invalid repeat limits", () => {
-  assert.throws(()=>makeJob({prompt:"   "}),/Prompt must contain/i);
-  assert.throws(()=>makeJob({conversationId:""}),/conversation ID/i);
-  assert.throws(()=>makeJob({repeatLimit:0}),/positive integer/i);
-  assert.throws(()=>makeJob({repeatLimit:1.5}),/positive integer/i);
+test("creates an unlimited job only with an explicit unlimited mode", () => {
+  const created = job({ repeatMode: "unlimited" });
+  assert.equal(created.repeatMode, "unlimited");
+  assert.equal(created.repeatCount, null);
 });
 
-test("selects queued jobs from separate conversations up to concurrency limit", () => {
-  const jobs=[
-    makeJob({id:"a",conversationId:"one"},40),
-    makeJob({id:"b",conversationId:"two"},10),
-    makeJob({id:"c",conversationId:"three"},30),
-    makeJob({id:"d",conversationId:"four"},20)
+test("rejects invalid IDs, targets, empty prompts and unbounded schedules", () => {
+  assert.throws(() => job({ jobId: "bad id" }), /jobId/);
+  assert.throws(() => job({ conversationId: " " }), /conversationId/);
+  assert.throws(() => job({ prompt: " " }), /prompt/);
+  assert.throws(() => job({ repeatCount: 0 }), /repeatCount/);
+  assert.throws(() => job({ repeatCount: 10_001 }), /repeatCount/);
+  assert.throws(() => job({ intervalMs: 86_400_001 }), /intervalMs/);
+  assert.throws(() => job({ repeatMode: "unlimited", repeatCount: 3 }), /repeatCount/);
+});
+
+test("claims the oldest due job and persists a dispatch lock in its conversation", () => {
+  const first = job();
+  const second = job({ jobId: "job-2", prompt: "Second prompt", createdAt: 110 });
+  const result = claim([second, first], "dispatch-1", 120, 2);
+
+  assert.equal(result.claimedJob.jobId, "job-1");
+  assert.equal(result.claimedJob.status, "dispatching");
+  assert.equal(result.claimedJob.dispatchId, "dispatch-1");
+  assert.deepEqual(promptConversationLocks(result.jobs), ["conversation-a"]);
+});
+
+test("never claims two jobs for the same conversation concurrently", () => {
+  const result = claim([job(), job({ jobId: "job-2", createdAt: 101 })]);
+  const second = claim(result.jobs, "dispatch-2", 200, 2);
+
+  assert.equal(result.claimedJob.jobId, "job-1");
+  assert.equal(second.claimedJob, null);
+});
+
+test("allows different conversations to run concurrently up to the configured limit", () => {
+  const jobs = [
+    job(),
+    job({ jobId: "job-2", conversationId: "conversation-b" }),
+    job({ jobId: "job-3", conversationId: "conversation-c" })
   ];
+  const first = claim(jobs, "dispatch-1", 100, 2);
+  const second = claim(first.jobs, "dispatch-2", 100, 2);
+  const third = claim(second.jobs, "dispatch-3", 100, 2);
 
-  assert.deepEqual(selectDispatchablePromptJobs(jobs,2),["b","d"]);
+  assert.equal(first.claimedJob.conversationId, "conversation-a");
+  assert.equal(second.claimedJob.conversationId, "conversation-b");
+  assert.equal(third.claimedJob, null);
+  assert.deepEqual(promptConversationLocks(second.jobs), ["conversation-a", "conversation-b"]);
 });
 
-test("does not select two jobs for the same conversation in one dispatch cycle", () => {
-  const jobs=[
-    makeJob({id:"a",conversationId:"one"},20),
-    makeJob({id:"b",conversationId:"one"},10),
-    makeJob({id:"c",conversationId:"two"},30)
-  ];
-
-  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),["b","c"]);
+test("does not claim a job before its repeat interval is due", () => {
+  const jobs = job({ nextDispatchAt: 500 });
+  assert.equal(claim([jobs], "dispatch-1", 499).claimedJob, null);
+  assert.equal(claim([jobs], "dispatch-2", 500).claimedJob.status, "dispatching");
 });
 
-test("an active or uncertain job locks its conversation but not other conversations", () => {
-  const jobs=[
-    {...makeJob({id:"a",conversationId:"one"}),status:"awaiting_response"},
-    makeJob({id:"b",conversationId:"one"}),
-    {...makeJob({id:"c",conversationId:"two"}),status:"needs_review"}
-  ];
+test("increments sentCount only after the page confirms the prompt was sent", () => {
+  const claimed = claim([job()]).jobs;
+  assert.equal(claimed[0].sentCount, 0);
+  const sent = confirmPromptSent(claimed, "job-1", "dispatch-1", 120);
 
-  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),[]);
-  assert.deepEqual(selectDispatchablePromptJobs([
-    jobs[0],jobs[1],makeJob({id:"d",conversationId:"three"})
-  ],3),["d"]);
+  assert.equal(sent[0].status, "awaiting_response");
+  assert.equal(sent[0].sentCount, 1);
+  assert.equal(sent[0].dispatchId, "dispatch-1");
 });
 
-test("begins one send and refuses a second active send for the same conversation", () => {
-  const jobs=[
-    makeJob({id:"a",conversationId:"one"}),
-    makeJob({id:"b",conversationId:"one"})
-  ];
-  const started=beginPromptSend(jobs,"a","send-token-1",1100);
-  assert.equal(started.ok,true);
-  assert.equal(started.job.status,"sending");
+test("requires the matching assistant completion event before another repeat is queued", () => {
+  const claimed = claim([job()]).jobs;
+  const sent = confirmPromptSent(claimed, "job-1", "dispatch-1", 120);
+  assert.equal(claim(sent, "dispatch-2", 500).claimedJob, null);
 
-  const blocked=beginPromptSend(started.jobs,"b","send-token-2",1101);
-  assert.equal(blocked.ok,false);
-  assert.match(blocked.error,/already has an active prompt job/i);
+  const completed = completeAssistantResponse(sent, "job-1", "dispatch-1", 300);
+  assert.equal(completed[0].status, "queued");
+  assert.equal(completed[0].sentCount, 1);
+  assert.equal(completed[0].nextDispatchAt, 1300);
+
+  assert.equal(claim(completed, "dispatch-2", 1299).claimedJob, null);
+  assert.equal(claim(completed, "dispatch-3", 1300).claimedJob.status, "dispatching");
 });
 
-test("requires a matching send acknowledgement before response waiting begins", () => {
-  const started=beginPromptSend([makeJob()],"job-a","token-a",1100);
-  const stale=confirmPromptSent(started.jobs,"job-a","wrong-token",1200);
-  assert.equal(stale.ok,false);
+test("finite jobs complete at the exact requested count", () => {
+  let current = [job({ repeatCount: 2 })];
+  let result = claim(current, "dispatch-1", 100);
+  current = confirmPromptSent(result.jobs, "job-1", "dispatch-1", 101);
+  current = completeAssistantResponse(current, "job-1", "dispatch-1", 102);
+  result = claim(current, "dispatch-2", 1102);
+  current = confirmPromptSent(result.jobs, "job-1", "dispatch-2", 1103);
+  current = completeAssistantResponse(current, "job-1", "dispatch-2", 1104);
 
-  const accepted=confirmPromptSent(started.jobs,"job-a","token-a",1200);
-  assert.equal(accepted.ok,true);
-  assert.equal(accepted.job.status,"awaiting_response");
-  assert.equal(accepted.job.sentCount,1);
+  assert.equal(current[0].sentCount, 2);
+  assert.equal(current[0].status, "completed");
+  assert.equal(claim(current, "dispatch-3", 5000).claimedJob, null);
 });
 
-test("finite jobs complete only after the configured number of assistant responses", () => {
-  let jobs=[makeJob({repeatLimit:2})];
-  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
-  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
-  const first=completePromptResponse(jobs,"job-a","t1",1300);
-  assert.equal(first.job.completedCount,1);
-  assert.equal(first.job.status,"queued");
-
-  jobs=beginPromptSend(first.jobs,"job-a","t2",1400).jobs;
-  jobs=confirmPromptSent(jobs,"job-a","t2",1500).jobs;
-  const second=completePromptResponse(jobs,"job-a","t2",1600);
-  assert.equal(second.job.completedCount,2);
-  assert.equal(second.job.status,"completed");
+test("unlimited jobs keep scheduling until explicitly stopped", () => {
+  let current = [job({ repeatMode: "unlimited" })];
+  for (let index = 1; index <= 3; index++) {
+    const dispatchId = "dispatch-" + index;
+    const result = claim(current, dispatchId, 100 + (index - 1) * 1000);
+    current = confirmPromptSent(result.jobs, "job-1", dispatchId, 101 + (index - 1) * 1000);
+    current = completeAssistantResponse(current, "job-1", dispatchId, 102 + (index - 1) * 1000);
+  }
+  assert.equal(current[0].sentCount, 3);
+  assert.equal(current[0].status, "queued");
 });
 
-test("unlimited jobs keep queuing after each confirmed assistant completion", () => {
-  let jobs=[makeJob({repeatLimit:null})];
-  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
-  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
-  const done=completePromptResponse(jobs,"job-a","t1",1300);
+test("pause and resume preserve an active response lock until completion", () => {
+  const claimed = claim([job()]).jobs;
+  const sent = confirmPromptSent(claimed, "job-1", "dispatch-1", 120);
+  const paused = pausePromptJob(sent, "job-1", 130);
+  assert.equal(paused[0].status, "awaiting_response");
+  assert.equal(paused[0].pauseRequested, true);
+  assert.deepEqual(promptConversationLocks(paused), ["conversation-a"]);
 
-  assert.equal(done.job.completedCount,1);
-  assert.equal(done.job.status,"queued");
-  assert.equal(done.job.repeatLimit,null);
+  const finished = completeAssistantResponse(paused, "job-1", "dispatch-1", 150);
+  assert.equal(finished[0].status, "paused");
+  assert.deepEqual(promptConversationLocks(finished), []);
+  const resumed = resumePromptJob(finished, "job-1", 200);
+  assert.equal(resumed[0].status, "queued");
+  assert.equal(resumed[0].nextDispatchAt, 200);
 });
 
-test("a completion event with a stale token cannot unlock or advance the job", () => {
-  let jobs=[makeJob()];
-  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
-  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
-  const stale=completePromptResponse(jobs,"job-a","old-token",1300);
-
-  assert.equal(stale.ok,false);
-  assert.equal(jobs[0].status,"awaiting_response");
-  assert.equal(jobs[0].completedCount,0);
+test("stop prevents future repeats but keeps an active conversation locked", () => {
+  const claimed = claim([job()]).jobs;
+  const sent = confirmPromptSent(claimed, "job-1", "dispatch-1", 120);
+  const requested = stopPromptJob(sent, "job-1", 130);
+  assert.equal(requested[0].status, "awaiting_response");
+  assert.equal(requested[0].stopRequested, true);
+  const finished = completeAssistantResponse(requested, "job-1", "dispatch-1", 150);
+  assert.equal(finished[0].status, "stopped");
+  assert.deepEqual(promptConversationLocks(finished), []);
 });
 
-test("stop during generation prevents the next repeat but lets the current response finish", () => {
-  let jobs=[makeJob({repeatLimit:null})];
-  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
-  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
-  jobs=requestPromptStop(jobs,"job-a",1250).jobs;
-  assert.equal(jobs[0].status,"awaiting_response");
-  assert.equal(jobs[0].stopRequested,true);
-
-  const done=completePromptResponse(jobs,"job-a","t1",1300);
-  assert.equal(done.job.status,"stopped");
-  assert.equal(done.job.completedCount,1);
+test("pause or stop applies immediately to a job that is not in flight", () => {
+  const paused = pausePromptJob([job()], "job-1", 110);
+  assert.equal(paused[0].status, "paused");
+  const stopped = stopPromptJob(paused, "job-1", 120);
+  assert.equal(stopped[0].status, "stopped");
 });
 
-test("pause and resume preserve progress while keeping the current conversation locked", () => {
-  let jobs=[makeJob()];
-  jobs=beginPromptSend(jobs,"job-a","t1",1100).jobs;
-  jobs=confirmPromptSent(jobs,"job-a","t1",1200).jobs;
-  jobs=requestPromptPause(jobs,"job-a",1250).jobs;
-  assert.equal(jobs[0].status,"awaiting_response");
-  assert.equal(jobs[0].pauseRequested,true);
+test("worker restart never silently retries a possibly sent prompt", () => {
+  const claimed = claim([job()]).jobs;
+  const recovered = recoverPromptJobs(claimed, 200);
 
-  const done=completePromptResponse(jobs,"job-a","t1",1300);
-  assert.equal(done.job.status,"paused");
-  assert.equal(done.job.completedCount,1);
-
-  const resumed=resumePromptJob(done.jobs,"job-a",1400);
-  assert.equal(resumed.job.status,"queued");
-  assert.equal(resumed.job.completedCount,1);
+  assert.equal(recovered[0].status, "needs_attention");
+  assert.equal(recovered[0].dispatchId, "dispatch-1");
+  assert.equal(recovered[0].lastErrorCode, "worker_restarted_during_dispatch");
+  assert.equal(claim(recovered, "dispatch-2", 300).claimedJob, null);
 });
 
-test("uncertain send outcomes lock the conversation until explicitly resolved", () => {
-  let jobs=[makeJob({id:"a",conversationId:"one"}),makeJob({id:"b",conversationId:"one"})];
-  jobs=beginPromptSend(jobs,"a","t1",1100).jobs;
-  jobs=markPromptDispatchUncertain(jobs,"a","t1","Could not verify whether ChatGPT accepted the send.",1200).jobs;
-  assert.equal(jobs[0].status,"needs_review");
-  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),[]);
+test("confirmed in-flight responses remain locked across worker recovery", () => {
+  const claimed = claim([job()]).jobs;
+  const sent = confirmPromptSent(claimed, "job-1", "dispatch-1", 120);
+  const recovered = recoverPromptJobs(sent, 200);
 
-  const resolved=resolveUncertainPromptJob(jobs,"a","confirm_not_sent",1300);
-  assert.equal(resolved.job.status,"queued");
-  assert.equal(resolved.job.currentToken,null);
-  assert.deepEqual(selectDispatchablePromptJobs(resolved.jobs,3),["a"]);
+  assert.equal(recovered[0].status, "awaiting_response");
+  assert.deepEqual(promptConversationLocks(recovered), ["conversation-a"]);
+});
+
+test("manual uncertainty resolution requires an explicit operator decision", () => {
+  const claimed = claim([job()]).jobs;
+  const uncertain = recoverPromptJobs(claimed, 200);
+  const notSent = resolvePromptUncertainty(
+    uncertain, "job-1", "dispatch-1", 210, "not_sent"
+  );
+  assert.equal(notSent[0].status, "queued");
+  assert.equal(notSent[0].sentCount, 0);
+
+  const secondClaim = claim([job()], "dispatch-2", 100).jobs;
+  const secondUncertain = recoverPromptJobs(secondClaim, 200);
+  const sent = resolvePromptUncertainty(
+    secondUncertain, "job-1", "dispatch-1", 210, "sent_and_completed"
+  );
+  assert.equal(sent[0].sentCount, 1);
+  assert.equal(sent[0].status, "queued");
+});
+
+test("rejects stale dispatch IDs and corrupted persisted snapshots", () => {
+  const claimed = claim([job()]).jobs;
+  assert.throws(
+    () => confirmPromptSent(claimed, "job-1", "stale-dispatch", 120),
+    /does not match/
+  );
+  assert.throws(
+    () => validatePromptJob({ ...job(), status: "awaiting_response" }),
+    /dispatchId/
+  );
+  assert.throws(
+    () => claim([job(), job({ jobId: "job-1" })], "dispatch-2", 200),
+    /Duplicate prompt job ID/
+  );
 });
