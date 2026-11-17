@@ -148,6 +148,7 @@
       url:location.href,
       composerAvailable:!!input,
       sendAvailable:!!sendButton(input),
+      generating:stopSignalVisible(),
       assistantMessageCount:assistantSnapshot().count
     };
   }
@@ -234,6 +235,7 @@
     clearInterval(monitor.poller);
     clearTimeout(monitor.timeout);
     state.monitors.delete(jobId);
+    state.pendingSends.delete(jobId);
   }
 
   function sendRuntime(type,payload){
@@ -341,6 +343,9 @@
     }
     if(!ALLOWED_HOSTS.has(location.hostname)||conversationId()!==targetConversationId) {
       return {ok:false,error:"This tab does not match the requested ChatGPT conversation."};
+    }
+    if(stopSignalVisible()) {
+      return {ok:false,error:"ChatGPT is already generating a response in this conversation. No prompt was sent."};
     }
 
     const existing=state.pendingSends.get(jobId);
