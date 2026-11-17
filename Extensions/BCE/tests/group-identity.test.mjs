@@ -43,7 +43,7 @@ test("rejects a second conversation with the same display name", () => {
   assert.match(result.error,/cannot safely distinguish/i);
 });
 
-test("allows a safe legacy upgrade only from a tab already linked to the group", () => {
+test("requires re-adding legacy display-name-only groups even when a tab ID matches", () => {
   const legacy={id:"operations",key:"operations",name:"Operations",tabIds:[11],lastAddedTabId:11};
   const result=resolveTeamsGroupIdentity([legacy],{
     groupKey:"operations",
@@ -51,11 +51,11 @@ test("allows a safe legacy upgrade only from a tab already linked to the group",
     chatId:"19:chat-a"
   },11);
 
-  assert.equal(result.ok,true);
-  assert.equal(result.group.chatId,"19:chat-a");
+  assert.equal(result.ok,false);
+  assert.match(result.error,/predates stable conversation IDs/i);
 });
 
-test("does not guess when a legacy same-name group has no matching source tab", () => {
+test("does not merge a legacy same-name group from a different tab", () => {
   const legacy={id:"operations",key:"operations",name:"Operations",tabIds:[11],lastAddedTabId:11};
   const result=resolveTeamsGroupIdentity([legacy],{
     groupKey:"operations",
@@ -64,7 +64,7 @@ test("does not guess when a legacy same-name group has no matching source tab", 
   },12);
 
   assert.equal(result.ok,false);
-  assert.match(result.error,/remove that saved group/i);
+  assert.match(result.error,/remove this chat again/i);
 });
 
 test("rejects a group when its stable ID is temporarily unavailable", () => {
