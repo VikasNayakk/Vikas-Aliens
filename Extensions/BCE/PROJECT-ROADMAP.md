@@ -252,6 +252,13 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 
 ### Phase 4 — ChatGPT prompt automation (mandatory core capability)
 
+- [x] Global cancel-all control in the ChatGPT Prompt Scheduler.
+  - Queued and paused jobs stop immediately.
+  - Sending / awaiting-response jobs finish the current response and then stop.
+  - Jobs in `needs_review` remain locked and require explicit manual resolution; cancel-all does not guess whether a prompt was sent or whether a response completed.
+  - Terminal jobs remain unchanged.
+  - Unit tests cover mixed states, lock preservation and invalid input.
+
 **Extension-only implementation status:** the scheduler state model, service-worker orchestration, ChatGPT page adapter, toolbar entry point and prompt-manager UI are now connected. Jobs persist in `chrome.storage.local`; the service worker and ChatGPT page adapter both enforce one active job per conversation, and the service worker allows a maximum of three different conversations to be dispatched concurrently. Finite and unlimited jobs, per-job pause/resume/stop, manual uncertainty review, and worker-restart recovery are implemented and covered by unit tests.
 
 **Important verification boundary:** the ChatGPT page adapter uses composer / Send DOM controls and a conservative generation-state heuristic (new assistant message plus no visible generation signal and five seconds of stable content). This is not a server-confirmed completion signal. The extension has passed static / unit CI, but real Chrome + ChatGPT browser smoke tests have not been performed.
