@@ -122,16 +122,24 @@ async function getChatGPTTabInfo(tabId) {
 }
 async function listChatGPTConversations() {
   const tabs=await chrome.tabs.query({});
-  const candidates=tabs.filter(tab=>Number.isInteger(tab.id)&&chatgptUrl(tab.url));
+  const candidates=tabs
+    .filter(tab=>Number.isInteger(tab.id)&&chatgptUrl(tab.url))
+    .sort((a,b)=>Number(!!b.active)-Number(!!a.active));
   const results=await Promise.all(candidates.map(async tab=>{
     try {
       const info=await getChatGPTTabInfo(tab.id);
-      return info;
+      return {...info,active:tab.active===true,windowId:tab.windowId,index:tab.index};
     } catch (_) {
       return null;
     }
   }));
-  return results.filter(Boolean);
+
+  const seen=new Set();
+  return results.filter(info=>{
+    if(!info||seen.has(info.conversationId)) return false;
+    seen.add(info.conversationId);
+    return true;
+  });
 }
 async function startPromptResponseMonitor(job) {
   if(!job?.responseBaseline) {
