@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isTeamsContentSender, normalizeTeamsLiveMessage } from "../message-contracts.mjs";
+import { createMessageFingerprint, isTeamsContentSender, normalizeTeamsLiveMessage } from "../message-contracts.mjs";
 
 test("accepts a valid Teams text message and normalizes its group key", () => {
   const message=normalizeTeamsLiveMessage({
@@ -81,4 +81,16 @@ test("accepts only verified Teams content-script senders", () => {
   assert.equal(isTeamsContentSender({
     tab:{id:45,url:"https://example.com/"}
   }),false);
+});
+
+test("fingerprints fallback message identity without storing raw message text", async () => {
+  const source="V.N.\u001fPlease update the confidential spreadsheet\u001f\u001f\u001f1763373000000";
+  const first=await createMessageFingerprint(source);
+  const second=await createMessageFingerprint(source);
+  const changed=await createMessageFingerprint(source+" ");
+
+  assert.match(first,/^[a-f0-9]{64}$/);
+  assert.equal(first,second);
+  assert.notEqual(first,changed);
+  assert.equal(first.includes("confidential"),false);
 });
