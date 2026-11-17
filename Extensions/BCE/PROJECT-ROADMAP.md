@@ -258,6 +258,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
   - Jobs in `needs_review` remain locked and require explicit manual resolution; cancel-all does not guess whether a prompt was sent or whether a response completed.
   - Terminal jobs remain unchanged.
   - Unit tests cover mixed states, lock preservation and invalid input.
+  - Global cancel-all validation in the full extension test/CI run is pending; this task is implemented but not yet marked test-verified.
 
 **Extension-only implementation status:** the scheduler state model, service-worker orchestration, ChatGPT page adapter, toolbar entry point and prompt-manager UI are now connected. Jobs persist in `chrome.storage.local`; the service worker and ChatGPT page adapter both enforce one active job per conversation, and the service worker allows a maximum of three different conversations to be dispatched concurrently. Finite and unlimited jobs, per-job pause/resume/stop, manual uncertainty review, and worker-restart recovery are implemented and covered by unit tests.
 
@@ -355,7 +356,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
-- Phase 4 ChatGPT prompt automation: **9 of 16 implementation tasks complete (56%)**; browser smoke testing, repeat intervals, prompt templates, detailed run history, broader error recovery, global cancel-all and Thinking-mode control remain pending.
+- Phase 4 ChatGPT prompt automation: **10 of 17 implementation tasks complete (59%)**; browser smoke testing, repeat intervals, prompt templates, detailed run history, broader error recovery and Thinking-mode control remain pending.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 19 `.js` / `.mjs` files in the audited folder.
 - BCE unit tests: **44 / 44 passed**, including speech queue helpers, Teams message validation, stable group identity, prompt job state transitions, send / response uncertainty, worker-restart recovery and ChatGPT content-script conversation-lock checks.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
