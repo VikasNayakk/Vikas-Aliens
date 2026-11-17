@@ -209,15 +209,17 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 ### Phase 1 — Stabilize the existing BCE foundation
 
 - [ ] Add a reproducible local development/test setup without changing existing user data.
-- [ ] Add message-contract documentation for every `chrome.runtime` message type.
+- [x] Add CI validation for JavaScript / ES-module syntax and Manifest V3 referenced files.
+- [x] Document active `chrome.runtime` message contracts in `MESSAGE-CONTRACTS.md`.
 - [ ] Add schema validation for messages received by the service worker.
 - [ ] Fix group identity to prefer stable Teams conversation IDs; retain safe migration for saved groups.
 - [ ] Review and remove or deliberately reconnect obsolete monitor-tab helpers.
 - [ ] Decide whether the side panel becomes the primary workspace; wire it intentionally or retire its unreachable code.
 - [ ] Consolidate the duplicate Teams reader so only one authoritative pipeline is active.
-- [ ] Correct monitor counts and distinguish detected, queued, spoken and failed messages.
-- [ ] Add bounded, observable queue persistence and service-worker restart recovery.
-- [ ] Add tests for notification duplicates, virtualized chat history, own messages, replies, audio and tab closure.
+- [x] Correct popup labels and make the pending counter include the active batch's uncompleted messages. Separate spoken / failed counts remain pending.
+- [x] Add persisted speech queue recovery on service-worker wake and serialize concurrent queue hydration.
+- [x] Add unit tests for queue normalization, stable-ID de-duplication and pending-message counts.
+- [ ] Add browser/integration tests for notification duplicates, virtualized chat history, own messages, replies, audio and tab closure.
 - [ ] Update README and privacy documentation to match actual behavior.
 
 ### Phase 2 — BCE-side AI integration bridge (AI implementation excluded)
@@ -335,19 +337,24 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 
 ## 8. Progress meter and measurement policy
 
-The target product is much larger than the existing Voice Speakers release. A static code audit is not the same as a working automation feature, so the meter must not count unimplemented features as complete.
+The target product is much larger than the existing Voice Speakers release. Static source inspection, unit tests and real-browser verification are measured separately. No feature is counted as complete solely because its code has been written.
 
-**Initial baseline at audit time:**
+**Current verified baseline (2026-11-17):**
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
-- Runtime / browser smoke verification: **0%** (not run in this repository review).
-- BCE-side AI connector bridge and workflow engine: **0% implemented** (external AI model/reasoning excluded from this extension meter).
-- ChatGPT send/repeat/scheduling capability: **0% implemented**.
-- Teams task classification and approval: **0% implemented**.
-- Workflow authoring and GitHub sync: **0% implemented**.
+- Phase 1 foundation stabilization: **5 of 13 tasks complete (38%)**; 8 tasks remain.
+- BCE JavaScript / ES-module syntax validation: **passed** for all 9 `.js` / `.mjs` files in the audited folder.
+- Speech queue utility tests: **5 / 5 passed** (normalization, state preservation, stable-ID de-duplication and pending counts).
+- Manifest V3 JSON and referenced-file validation: **passed** (4 active references checked).
+- Current-commit whitespace validation: **passed**.
+- Real Chrome / Teams browser smoke verification: **0%** (not run in this repository review).
+- BCE-side external-AI connector bridge: **0% implemented** (AI model, training and reasoning are outside this extension workstream).
+- ChatGPT prompt sending and finite / unlimited scheduling: **0% implemented**.
+- Teams task intake and approval UI: **0% implemented**.
+- Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-The overall product percentage will be calculated from the engineering backlog only after task weights are finalized. Each task must be marked done only when code and its acceptance test both pass. Future progress reports should show completed, in-progress, pending and blocked counts plus the tested commit SHA.
+There is no single weighted overall-product percentage yet; the feature groups have different scope and dependencies. The Phase 1 percentage is task-count based and is not a claim that the complete extension is 38% release-ready. A task is complete only when its code and acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 
