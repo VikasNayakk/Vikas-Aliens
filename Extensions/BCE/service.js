@@ -437,6 +437,10 @@ async function handleChatGPTContentEvent(message,sender) {
     if(!Number.isInteger(message.responseLength)||message.responseLength<1||message.responseLength>500000) return;
     const result=await mutatePromptJobs(current=>completePromptResponse(current,jobId,token,Date.now()));
     if(result?.ok) {
+      if(result.job?.status==="waiting_interval"&&Number.isFinite(result.job.nextRunAt)) {
+        chrome.alarms.create(PROMPT_INTERVAL_ALARM_PREFIX+result.job.id,{when:result.job.nextRunAt});
+      }
+      await refreshPromptIntervalAlarms();
       await publishPromptJobs();
       dispatchPromptJobs().catch(()=>{});
     }
@@ -484,8 +488,8 @@ async function ensurePromptRuntimeRecovered() {
       }
     }
 
-    promptRuntimeRecovered=true;
     await refreshPromptIntervalAlarms();
+    promptRuntimeRecovered=true;
     await publishPromptJobs();
   })();
 
