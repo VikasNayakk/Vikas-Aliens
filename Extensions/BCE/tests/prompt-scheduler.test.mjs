@@ -435,3 +435,19 @@ test("an invalid persisted interval timestamp fails safely rather than dispatchi
   assert.equal(result.jobs[0].status,"failed");
   assert.match(result.jobs[0].lastError,/schedule is invalid/i);
 });
+
+test("begin-send independently refuses a conversation locked by a future repeat interval",()=>{
+  const waiting={...makeJob({id:"waiting",conversationId:"same",repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:90000};
+  const next=makeJob({id:"next",conversationId:"same"});
+  const result=beginPromptSend([waiting,next],"next","token-next",50000);
+  assert.equal(result.ok,false);
+  assert.match(result.error,/already has an active prompt job/i);
+});
+
+test("worker recovery preserves a valid waiting interval and its absolute due timestamp",()=>{
+  const waiting={...makeJob({repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:90000};
+  const recovered=recoverPromptJobsAfterWorkerRestart([waiting],50000);
+  assert.equal(recovered.ok,true);
+  assert.equal(recovered.jobs[0].status,"waiting_interval");
+  assert.equal(recovered.jobs[0].nextRunAt,90000);
+});

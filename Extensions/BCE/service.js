@@ -485,6 +485,7 @@ async function ensurePromptRuntimeRecovered() {
     }
 
     promptRuntimeRecovered=true;
+    await refreshPromptIntervalAlarms();
     await publishPromptJobs();
   })();
 
