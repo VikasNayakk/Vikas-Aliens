@@ -165,6 +165,18 @@ The speech queue phase values currently used are `group`, `gap`, `message` and `
 
 A repeat limit of `null` means unlimited until the owner stops the job. A finite job completes only after the configured number of assistant responses has been accepted by the completion monitor. The service worker permits at most three different conversations to be dispatched concurrently and locks each conversation while a job is `sending`, `awaiting_response` or `needs_review`.
 
+### Prompt template operations
+
+The Prompt Manager calls these service-worker APIs:
+| Message type | Request fields | Response |
+|---|---|---|
+| `GET_CHATGPT_PROMPT_TEMPLATES` | None | `{ ok, templates[] }` |
+| `SAVE_CHATGPT_PROMPT_TEMPLATE` | `id?: string, name: string, content: string, enabled?: boolean` | `{ ok, template }` |
+| `SET_CHATGPT_PROMPT_TEMPLATE_ENABLED` | `id: string, enabled: boolean` | `{ ok, template }` |
+| `DELETE_CHATGPT_PROMPT_TEMPLATE` | `id: string` | `{ ok, id }` |
+
+Templates are stored locally under `chatgptPromptTemplates`. The template model limits the library to 100 entries, names to 80 characters and prompt content to 50,000 characters. Names are unique case-insensitively. Variables use `{{variable_name}}`, with a letter first and up to 40 alphanumeric / underscore characters. Missing values block insertion. Disabled templates remain saved but cannot be applied. Template values are inserted as plain text into the prompt editor; the extension does not interpret them as HTML or code.
+
 ### Service worker → ChatGPT content script
 
 | Message type | Request fields | Response |
