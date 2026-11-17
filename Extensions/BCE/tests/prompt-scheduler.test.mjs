@@ -13,14 +13,14 @@ import {
   selectDispatchablePromptJobs
 } from "../prompt-scheduler.mjs";
 
-const makeJob=(overrides={})=>createPromptJob({
+const makeJob=(overrides={},now=1000)=>createPromptJob({
   id:"job-a",
   conversationId:"conversation-a",
   tabId:10,
   prompt:"Continue the approved task.",
   repeatLimit:3,
   ...overrides
-},1000);
+},now);
 
 test("creates finite and unlimited prompt jobs with independent progress counters", () => {
   const finite=makeJob();
@@ -42,10 +42,10 @@ test("rejects empty prompt, missing conversation and invalid repeat limits", () 
 
 test("selects queued jobs from separate conversations up to concurrency limit", () => {
   const jobs=[
-    makeJob({id:"a",conversationId:"one",createdAt:10}),
-    makeJob({id:"b",conversationId:"two",createdAt:20}),
-    makeJob({id:"c",conversationId:"three",createdAt:30}),
-    makeJob({id:"d",conversationId:"four",createdAt:40})
+    makeJob({id:"a",conversationId:"one"},40),
+    makeJob({id:"b",conversationId:"two"},10),
+    makeJob({id:"c",conversationId:"three"},30),
+    makeJob({id:"d",conversationId:"four"},20)
   ];
 
   assert.deepEqual(selectDispatchablePromptJobs(jobs,2),["a","b"]);
@@ -53,9 +53,9 @@ test("selects queued jobs from separate conversations up to concurrency limit", 
 
 test("does not select two jobs for the same conversation in one dispatch cycle", () => {
   const jobs=[
-    makeJob({id:"a",conversationId:"one",createdAt:10}),
-    makeJob({id:"b",conversationId:"one",createdAt:20}),
-    makeJob({id:"c",conversationId:"two",createdAt:30})
+    makeJob({id:"a",conversationId:"one"},20),
+    makeJob({id:"b",conversationId:"one"},10),
+    makeJob({id:"c",conversationId:"two"},30)
   ];
 
   assert.deepEqual(selectDispatchablePromptJobs(jobs,3),["a","c"]);
