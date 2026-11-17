@@ -366,7 +366,8 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - ChatGPT prompt manager: **extension-side UI and service-worker integration are implemented** for selected open conversations, finite / unlimited jobs, per-conversation serialization, three-way cross-conversation concurrency, per-job controls and manual uncertainty review.
 - ChatGPT page adapter: **registered and statically validated**; explicit per-conversation page locks prevent a second job while a response monitor is active. Live DOM selectors and generation completion heuristic are **not yet verified in a real Chrome / ChatGPT session**.
 - Prompt-job worker recovery: **implemented and unit-tested**; a persisted send with uncertain outcome moves to manual review rather than being resent automatically.
-- Current-commit whitespace validation: **passed**.\n- Latest fully verified commit: `0ad863b69705c635e082d078f932c554598fa55f` ([GitHub Actions run #133](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44100529192)).
+- Current-commit whitespace validation: **passed**.
+- Latest fully verified commit: `0ad863b69705c635e082d078f932c554598fa55f` ([GitHub Actions run #133](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44100529192)).
 - Local developer command: **`npm run check` passed**; CI runs the same command without third-party dependencies.
 - Privacy and runtime documentation: **updated** for ChatGPT prompt storage, local page processing and current implementation limits.
 - Real Chrome / Teams / ChatGPT browser smoke verification: **0%** (not performed in this repository session).
