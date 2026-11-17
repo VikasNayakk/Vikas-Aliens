@@ -38,7 +38,10 @@ jobs:
           while IFS= read -r -d '' file; do
             echo "Checking $file"
             node --input-type=module --check < "$file"
-          done < <(find Extensions/BCE -maxdepth 1 -type f -name '*.js' -print0)
+          done < <(find Extensions/BCE -type f \\( -name '*.js' -o -name '*.mjs' \\) -print0)
+
+      - name: Run BCE unit tests
+        run: node --test Extensions/BCE/tests/*.test.mjs
 
       - name: Validate manifest JSON and referenced files
         shell: bash
