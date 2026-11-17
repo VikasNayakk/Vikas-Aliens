@@ -50,10 +50,17 @@ function requireNow(value) {
 function requireJobCollection(jobs) {
   if (!Array.isArray(jobs)) fail("jobs must be an array.");
   const seen = new Set();
+  const activeConversations = new Set();
   const copy = jobs.map(job => validatePromptJob(job));
   for (const job of copy) {
     if (seen.has(job.jobId)) fail("Duplicate prompt job ID: " + job.jobId);
     seen.add(job.jobId);
+    if (ACTIVE_STATUSES.has(job.status)) {
+      if (activeConversations.has(job.conversationId)) {
+        fail("More than one active prompt job targets the same conversation.");
+      }
+      activeConversations.add(job.conversationId);
+    }
   }
   return copy;
 }

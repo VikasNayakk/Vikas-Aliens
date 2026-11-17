@@ -214,7 +214,7 @@ test("manual uncertainty resolution requires an explicit operator decision", () 
   assert.equal(notSent[0].status, "queued");
   assert.equal(notSent[0].sentCount, 0);
 
-  const secondClaim = claim([job()], "dispatch-2", 100).jobs;
+  const secondClaim = claim([job()], "dispatch-1", 100).jobs;
   const secondUncertain = recoverPromptJobs(secondClaim, 200);
   const sent = resolvePromptUncertainty(
     secondUncertain, "job-1", "dispatch-1", 210, "sent_and_completed"
@@ -236,5 +236,18 @@ test("rejects stale dispatch IDs and corrupted persisted snapshots", () => {
   assert.throws(
     () => claim([job(), job({ jobId: "job-1" })], "dispatch-2", 200),
     /Duplicate prompt job ID/
+  );
+});
+
+test("rejects persisted state with two active jobs for one conversation", () => {
+  const first = claim([job()], "dispatch-1", 100).jobs[0];
+  const second = {
+    ...first,
+    jobId: "job-2",
+    dispatchId: "dispatch-2"
+  };
+  assert.throws(
+    () => promptConversationLocks([first, second]),
+    /More than one active prompt job/
   );
 });
