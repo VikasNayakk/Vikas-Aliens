@@ -198,7 +198,7 @@ The response baseline stores message counts, DOM keys, fingerprints and lengthsâ
 
 `chatgptPromptJobs` stores the prompt text, conversation / tab identity, finite or unlimited repeat limit, sent and completed counters, current send token, response baseline, pause / stop flags, status, timestamps and bounded error details. Data remains in Chrome extension local storage and is not encrypted by BCE.
 
-## 6. Existing but inactive / legacy message paths
+`chatgptPromptTemplates` stores the reusable template records, including ID, name, source content, extracted variable names, enabled state and creation / update timestamps. It is local extension storage and is not encrypted by BCE.\n\n## 7. Existing but inactive / legacy message paths
 
 These paths are not part of the active popup workflow:
 
@@ -208,7 +208,7 @@ These paths are not part of the active popup workflow:
 
 Before reconnecting any legacy UI, first choose one authoritative Teams message pipeline and migrate its state deliberately. Do not activate both pipelines in parallel.
 
-## 7. Change policy
+## 8. Change policy
 
 1. Keep message type strings stable unless migration is explicit.
 2. Validate sender, type, required fields and payload size at the service-worker boundary.
