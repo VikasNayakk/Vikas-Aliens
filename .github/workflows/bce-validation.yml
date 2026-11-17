@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -74,4 +76,4 @@ jobs:
           NODE
 
       - name: Check whitespace errors
-        run: git show --check --oneline HEAD
+        run: git diff --check HEAD^ HEAD
