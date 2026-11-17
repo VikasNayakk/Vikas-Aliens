@@ -18,6 +18,11 @@ import {
   selectDispatchablePromptJobs,
   requestStopAllPromptJobs
 } from "./prompt-scheduler.mjs";
+import {
+  deletePromptTemplate,
+  setPromptTemplateEnabled,
+  upsertPromptTemplate
+} from "./prompt-templates.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
 async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
@@ -26,9 +31,11 @@ async function analyze(input){const s=await chrome.storage.local.get(["apiKey","
 
 
 const PROMPT_JOBS_KEY = "chatgptPromptJobs";
+const PROMPT_TEMPLATES_KEY = "chatgptPromptTemplates";
 const PROMPT_MAX_CONCURRENT = 3;
 const PROMPT_MAX_ACTIVE_JOBS = 50;
 let promptMutationQueue = Promise.resolve();
+let promptTemplateMutationQueue = Promise.resolve();
 let promptDispatching = false;
 let promptRuntimeRecovered = false;
 let promptRuntimeRecovery = null;
@@ -82,6 +89,46 @@ async function sendChatGPTTabMessage(tabId,message) {
 async function getStoredPromptJobs() {
   const saved=await chrome.storage.local.get(PROMPT_JOBS_KEY);
   return Array.isArray(saved[PROMPT_JOBS_KEY])?saved[PROMPT_JOBS_KEY]:[];
+}
+async function getStoredPromptTemplates() {
+  const saved=await chrome.storage.local.get(PROMPT_TEMPLATES_KEY);
+  return Array.isArray(saved[PROMPT_TEMPLATES_KEY])?saved[PROMPT_TEMPLATES_KEY]:[];
+}
+async function mutatePromptTemplates(mutator) {
+  const operation=promptTemplateMutationQueue.then(async()=>{
+    const templates=await getStoredPromptTemplates();
+    const result=await mutator(templates);
+    if(Array.isArray(result?.templates)) {
+      await chrome.storage.local.set({[PROMPT_TEMPLATES_KEY]:result.templates});
+    }
+    return result;
+  });
+  promptTemplateMutationQueue=operation.then(()=>undefined,()=>undefined);
+  return operation;
+}
+async function saveChatGPTPromptTemplate(request) {
+  const result=await mutatePromptTemplates(templates=>upsertPromptTemplate(templates,{
+    id:typeof request?.id==="string"&&request.id?request.id:crypto.randomUUID(),
+    name:request?.name,
+    content:request?.content,
+    enabled:request?.enabled
+  },Date.now()));
+  if(!result?.ok) throw new Error(result?.error||"Could not save the prompt template.");
+  return result.template;
+}
+async function setChatGPTPromptTemplateEnabled(request) {
+  const result=await mutatePromptTemplates(templates=>
+    setPromptTemplateEnabled(templates,request?.id,request?.enabled,Date.now())
+  );
+  if(!result?.ok) throw new Error(result?.error||"Could not update the prompt template.");
+  return result.template;
+}
+async function removeChatGPTPromptTemplate(request) {
+  const result=await mutatePromptTemplates(templates=>
+    deletePromptTemplate(templates,request?.id)
+  );
+  if(!result?.ok) throw new Error(result?.error||"Could not delete the prompt template.");
+  return result.deletedId;
 }
 async function mutatePromptJobs(mutator) {
   const operation=promptMutationQueue.then(async()=>{
@@ -1041,6 +1088,31 @@ async function onTeamsMessage(message,sender) {
 }
 
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+  if(message?.type==="GET_CHATGPT_PROMPT_TEMPLATES") {
+    getStoredPromptTemplates()
+      .then(templates=>sendResponse({ok:true,templates}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(message?.type==="SAVE_CHATGPT_PROMPT_TEMPLATE") {
+    saveChatGPTPromptTemplate(message)
+      .then(template=>sendResponse({ok:true,template}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(message?.type==="SET_CHATGPT_PROMPT_TEMPLATE_ENABLED") {
+    setChatGPTPromptTemplateEnabled(message)
+      .then(template=>sendResponse({ok:true,template}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(message?.type==="DELETE_CHATGPT_PROMPT_TEMPLATE") {
+    removeChatGPTPromptTemplate(message)
+      .then(id=>sendResponse({ok:true,id}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+
   if(message?.type==="GET_CHATGPT_CONVERSATIONS") {
     (async()=>{
       await ensurePromptRuntimeRecovered();
