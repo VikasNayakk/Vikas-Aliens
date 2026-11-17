@@ -363,7 +363,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
 - Phase 4 ChatGPT prompt automation: **13 of 16 implementation tasks complete (81%)**; browser smoke testing, broader error recovery and Thinking-mode control remain pending.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 21 `.js` / `.mjs` files in the current audited folder.
-- BCE unit tests: **69 / 69 passed** in GitHub Actions, including 12 repeat-interval lifecycle / policy tests, 3 global-cancel tests and 10 prompt-template lifecycle / variable tests.
+- BCE unit tests: **76 / 76 passed** in GitHub Actions, including 7 per-repeat history tests, 12 repeat-interval lifecycle / policy tests, 3 global-cancel tests and 10 prompt-template lifecycle / variable tests.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
 - Local HTML asset validation: **passed** (4 pages and their local script / stylesheet references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
@@ -373,7 +373,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - ChatGPT page adapter: **registered and statically validated**; explicit per-conversation page locks prevent a second job while a response monitor is active. Live DOM selectors and generation completion heuristic are **not yet verified in a real Chrome / ChatGPT session**.
 - Prompt-job worker recovery: **implemented and unit-tested**; a persisted send with uncertain outcome moves to manual review rather than being resent automatically.
 - Current-commit whitespace validation: **passed**.
-- Latest fully verified commit: `2b625b9c8e392a74907f506b987d4c1709554a40` ([GitHub Actions run #144](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44105207956)).
+- Latest fully verified commit: `c7dc182cf73463fcbf8c244fc6ae337c3c1daac3` ([GitHub Actions run #149](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44108216885)).
 - Local developer command: **`npm run check` passed**; CI runs the same command without third-party dependencies.
 - Privacy and runtime documentation: **updated** for ChatGPT prompt storage, local page processing and current implementation limits.
 - Real Chrome / Teams / ChatGPT browser smoke verification: **0%** (not performed in this repository session).
@@ -382,7 +382,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-A simple task-count meter (equal weight per checklist item across Phases 0–8) is **31 / 96 complete (32.3%) and 65 / 96 pending (67.7%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
+A simple task-count meter (equal weight per checklist item across Phases 0–8) is **31 / 96 complete (32.3%), 0 in progress, 65 pending (67.7%) and 0 explicitly blocked**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 

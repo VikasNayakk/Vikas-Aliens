@@ -196,7 +196,7 @@ Each job retains a maximum of 100 recent attempt records with a monotonic attemp
 
 ### Prompt job storage
 
-`chatgptPromptJobs` stores the prompt text, conversation / tab identity, finite or unlimited repeat limit, repeat interval, persisted next-run timestamp / paused remaining delay, sent and completed counters, current send token, response baseline, pause / stop flags, status, timestamps and bounded error details. Data remains in Chrome extension local storage and is not encrypted by BCE.
+`chatgptPromptJobs` stores the prompt text, conversation / tab identity, finite or unlimited repeat limit, repeat interval, persisted next-run timestamp / paused remaining delay, lifetime `attemptCount`, up to 100 recent `runHistory` records per job, sent and completed counters, current send token, response baseline, pause / stop flags, status, timestamps and bounded error details. A run record contains its attempt number, start / send-confirmation / completion / uncertainty timestamps, elapsed duration, outcome and bounded error / review resolution. Older jobs created before this feature are not retroactively reconstructed. Data remains in Chrome extension local storage and is not encrypted by BCE.
 
 `chatgptPromptTemplates` stores the reusable template records, including ID, name, source content, extracted variable names, enabled state and creation / update timestamps. It is local extension storage and is not encrypted by BCE.
 
