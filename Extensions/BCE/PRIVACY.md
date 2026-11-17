@@ -35,11 +35,21 @@ The extension source retains an optional `ANALYZE_MESSAGES` handler:
 - The API key and model setting are stored in Chrome extension local storage. BCE does not encrypt the key.
 - The current active toolbar popup / Teams reader does not automatically send monitored Teams messages to OpenAI. The analysis handler runs only when an extension UI or extension action explicitly invokes it.
 
+## ChatGPT prompt scheduler
+
+- Prompt jobs are created only from the BCE prompt manager and only for conversations the owner selects.
+- BCE stores each job's prompt text, conversation ID, tab ID, repeat limit, sent / completed counters, status, send token, response baseline, timestamps and limited error details in `chrome.storage.local`. This storage is not encrypted by BCE.
+- The ChatGPT content script enters the saved prompt into the selected conversation and clicks the page's Send control only when the composer and enabled Send button are found.
+- Before sending, the content script captures local conversation counts and message identifiers. After sending, it requires a newly appended user-message record that matches the prompt. A send whose outcome cannot be verified is moved to manual review instead of being retried automatically.
+- For response monitoring, message text stays in the ChatGPT page. The content script sends only message keys, counts, locally computed text fingerprints, response length and completion / uncertainty signals to the service worker. Full assistant response text is not saved in extension storage.
+- Prompt text remains in the job record while it is retained in job history. The prompt is submitted through the signed-in ChatGPT website session in the selected browser tab; BCE does not send it through the optional OpenAI API analysis handler.
+- A send or response that cannot be verified is marked for manual review. BCE does not automatically retry an uncertain send because doing so could duplicate work.
+- Chrome extension local storage is accessible to the browser profile and is not an encrypted vault. Avoid storing passwords, access tokens or other secrets in prompts.
+
 ## ChatGPT and other browser workflows
 
-- The current active manifest runtime does not send prompts to ChatGPT, repeat prompts, or run multi-conversation prompt jobs.
-- The old side-panel page and its read-only ChatGPT conversation parser are not registered in the current manifest and are not part of the active runtime.
-- Excel, Microsoft To Do, OneDrive, OneNote, Teams task classification, workflow execution and automatic workflow creation are not currently implemented.
+- The prompt manager and controlled ChatGPT page adapter are part of the active manifest runtime. The old side-panel page and its read-only ChatGPT parser remain unregistered and inactive.
+- Excel, Microsoft To Do, OneDrive, OneNote, Teams task classification, reusable workflow execution and automatic workflow creation are not currently implemented. Live ChatGPT UI behavior remains pending manual browser testing.
 
 ## Diagnostics and network use
 
