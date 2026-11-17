@@ -35,12 +35,22 @@ async function getStoredGroups() {
 }
 
 async function getLiveState() {
+  await hydrateSpeechQueue();
   const saved=await chrome.storage.local.get([
     TEAMS_LIVE_KEY,TEAMS_READ_COUNT,TEAMS_RECENT_EVENTS,
-    "teamsLastStatus","teamsPopupTheme","teamsSpeechQueue"
+    "teamsLastStatus","teamsPopupTheme","teamsSpeechQueue","teamsSpeechCurrent"
   ]);
   const tabs=await getTeamsTabs();
   const groups=await getStoredGroups();
+  const queuedMessages=Array.isArray(saved.teamsSpeechQueue)
+    ? saved.teamsSpeechQueue.reduce((total,batch)=>total+(Array.isArray(batch.messages)?batch.messages.length:(batch.sender?1:0)),0)
+    : 0;
+  const current=saved.teamsSpeechCurrent;
+  const currentLength=Array.isArray(current?.messages)
+    ? current.messages.length
+    : (current?.sender||current?.text||current?.audioRef||current?.audioUrl ? 1 : 0);
+  const currentIndex=Number.isInteger(current?.messageIndex)?Math.max(0,current.messageIndex):0;
+  const currentRemaining=Math.max(0,currentLength-currentIndex);
   return {
     teamsLiveEnabled:!!saved[TEAMS_LIVE_KEY],
     teamsTabCount:tabs.length,
@@ -50,7 +60,7 @@ async function getLiveState() {
     teamsSelectedGroups:groups,
     teamsReadCount:saved[TEAMS_READ_COUNT]||0,
     teamsRecentEvents:saved[TEAMS_RECENT_EVENTS]||[],
-    teamsQueueCount:(Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue.reduce((total,batch)=>total+(Array.isArray(batch.messages)?batch.messages.length:(batch.sender?1:0)),0):0)+(saved.teamsSpeechCurrent?.messages?.length||0)-(saved.teamsSpeechCurrent?.messageIndex||0),
+    teamsQueueCount:queuedMessages+currentRemaining,
     teamsLastStatus:saved.teamsLastStatus||"",
     teamsPopupTheme:saved.teamsPopupTheme||"light"
   };
@@ -357,11 +367,13 @@ async function readLastFive(groupKey) {
 
 async function hydrateSpeechQueue() {
   if(speechQueueLoaded) return;
-  const saved=await chrome.storage.local.get(["teamsSpeechQueue","teamsSpeechCurrent"]);
+  const saved=await chrome.storage.local.get([TEAMS_LIVE_KEY,"teamsSpeechQueue","teamsSpeechCurrent"]);
   speechQueue=(Array.isArray(saved.teamsSpeechQueue)?saved.teamsSpeechQueue:[])
     .map(normalizeSpeechBatch).filter(batch=>batch.messages.length>0);
   speechCurrent=saved.teamsSpeechCurrent?normalizeSpeechBatch(saved.teamsSpeechCurrent):null;
   speechQueueLoaded=true;
+
+  if(!saved[TEAMS_LIVE_KEY]) return;
 
   if(speechCurrent?.phase==="gap") {
     const sequence=speechCurrent.sequence;
@@ -371,7 +383,24 @@ async function hydrateSpeechQueue() {
         persistSpeechQueue().then(speakCurrentPhase);
       }
     },5000);
+    return;
   }
+
+  if(speechCurrent) {
+    const recovered=speechCurrent;
+    try { chrome.tts.stop(); } catch (_) {}
+    if(recovered.phase==="audio") {
+      await stopTeamsAudio();
+      if(speechCurrent!==recovered) return;
+      recovered.phase="message";
+      recovered.playbackId="";
+    }
+    await persistSpeechQueue();
+    if(speechCurrent===recovered) speakCurrentPhase();
+    return;
+  }
+
+  scheduleSpeechQueue();
 }
 function normalizeSpeechBatch(item){
   const rawMessages=Array.isArray(item?.messages)
@@ -657,11 +686,16 @@ async function onTeamsMessage(message,sender) {
   const stableKey=groupKey+"|"+(messageId||[senderName,text,audioRef,audioUrl,message.timestamp||""].join("|"));
   if(await wasMessageProcessed(stableKey)) return;
   const now=Date.now();
-  const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+String(!!(audioRef||audioUrl))+"|"+String(message.messageTimestamp||"");
-  const recentAt=recentMessageIds.get(recentTextKey)||0;
-  if(recentAt&&now-recentAt<5000) return;
+
+  // A stable Teams message ID is stronger than text similarity. Only use the
+  // short-window text fallback when Teams did not expose a message ID.
+  if(!messageId) {
+    const recentTextKey=groupKey+"|"+senderName+"|"+text.toLocaleLowerCase()+"|"+String(!!(audioRef||audioUrl))+"|"+String(message.messageTimestamp||"");
+    const recentAt=recentMessageIds.get(recentTextKey)||0;
+    if(recentAt&&now-recentAt<5000) return;
+    recentMessageIds.set(recentTextKey,now);
+  }
   recentMessageIds.set(stableKey,now);
-  recentMessageIds.set(recentTextKey,now);
   if(recentMessageIds.size>5000){
     for(const [key,time] of recentMessageIds) if(now-time>120000) recentMessageIds.delete(key);
     if(recentMessageIds.size>5000) recentMessageIds.clear();
