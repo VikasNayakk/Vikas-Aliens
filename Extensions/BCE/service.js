@@ -1,7 +1,7 @@
 import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
 import {appendUniqueMessages,countPendingSpeechMessages,normalizeSpeechBatch} from "./speech-queue.mjs";
 import {resolveTeamsGroupIdentity} from "./group-identity.mjs";
-import {normalizeTeamsLiveMessage} from "./message-contracts.mjs";
+import {isTeamsContentSender,normalizeTeamsLiveMessage} from "./message-contracts.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
 async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
@@ -530,8 +530,10 @@ async function stopTeamsAudio(){
     try{await chrome.tabs.sendMessage(tab.id,{type:"TEAMS_STOP_AUDIO"});}catch(_){}
   }
 }
-async function handleAudioPlaybackEvent(message){
-  await hydrateSpeechQueue({completedPlaybackId:String(message.playbackId||"")});
+async function handleAudioPlaybackEvent(message,sender){
+  if(!isTeamsContentSender(sender)) return;
+  if(typeof message.playbackId!=="string"||message.playbackId.length>128) return;
+  await hydrateSpeechQueue({completedPlaybackId:message.playbackId});
   if(!speechCurrent||speechCurrent.phase!=="audio"||speechCurrent.playbackId!==message.playbackId) return;
   if(message.type==="TEAMS_AUDIO_FAILED") await setStatus(message.error||"Teams audio playback failed.");
   scheduleNextMessage(350);
@@ -564,9 +566,8 @@ async function onTeamsMessage(message,sender) {
   const group=groups.find(item=>item.key===groupKey);
   if(!group) return;
 
-  const tabId=sender?.tab?.id;
-  const sourceUrl=sender?.url||sender?.tab?.url||"";
-  if(!Number.isInteger(tabId)||!teamsUrl(sourceUrl)) return;
+  if(!isTeamsContentSender(sender)) return;
+  const tabId=sender.tab.id;
 
   const senderName=String(message.sender||"").trim();
   const text=String(message.text||"").trim();
@@ -652,11 +653,18 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     readLastFive(message.groupKey).then(sendResponse).catch(error=>sendResponse({error:error.message}));
     return true;
   }
-  if(message?.type==="TEAMS_LIVE_MESSAGE") onTeamsMessage(message,sender).catch(error=>setStatus("Teams message pipeline error: "+error.message));
-  if(message?.type==="TEAMS_AUDIO_ENDED"||message?.type==="TEAMS_AUDIO_FAILED") handleAudioPlaybackEvent(message).catch(()=>{});
-  if(message?.type==="TEAMS_LIVE_STATUS") {
-    const text=String(message.text||"");
-    chrome.storage.local.set({teamsLastStatus:text});
+  if(message?.type==="TEAMS_LIVE_MESSAGE" && isTeamsContentSender(sender)) {
+    onTeamsMessage(message,sender).catch(error=>setStatus("Teams message pipeline error: "+error.message));
+  }
+  if(
+    (message?.type==="TEAMS_AUDIO_ENDED"||message?.type==="TEAMS_AUDIO_FAILED") &&
+    isTeamsContentSender(sender)
+  ) {
+    handleAudioPlaybackEvent(message,sender).catch(()=>{});
+  }
+  if(message?.type==="TEAMS_LIVE_STATUS" && isTeamsContentSender(sender)) {
+    const text=typeof message.text==="string"?message.text.slice(0,500):"";
+    if(text) chrome.storage.local.set({teamsLastStatus:text});
   }
 });
 
