@@ -4,6 +4,7 @@
 
   const state=window[STATE_KEY]={
     monitors:new Map(),
+    conversationLocks:new Map(),
     pendingSends:new Map()
   };
 
@@ -235,6 +236,9 @@
       clearInterval(monitor.poller);
       clearTimeout(monitor.timeout);
       state.monitors.delete(jobId);
+      if(state.conversationLocks.get(monitor.conversationId)===jobId) {
+        state.conversationLocks.delete(monitor.conversationId);
+      }
     }
     // Also clear a send record when monitor creation failed before registration.
     state.pendingSends.delete(jobId);
@@ -257,6 +261,11 @@
     const existing=state.monitors.get(jobId);
     if(existing&&existing.token===token) return {ok:true,alreadyMonitoring:true};
     if(existing) stopMonitor(jobId);
+
+    const conversationLock=state.conversationLocks.get(expectedConversationId);
+    if(conversationLock&&conversationLock!==jobId) {
+      return {ok:false,error:"Another prompt is active in this conversation. Wait for its response before starting a new monitor."};
+    }
 
     const monitor={
       jobId,token,conversationId:expectedConversationId,baseline,prompt,
@@ -319,6 +328,7 @@
     }
 
     state.monitors.set(jobId,monitor);
+    state.conversationLocks.set(expectedConversationId,jobId);
     monitor.observer=new MutationObserver(scan);
     monitor.observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true});
     monitor.poller=setInterval(scan,700);
@@ -347,7 +357,8 @@
     if(!ALLOWED_HOSTS.has(location.hostname)||conversationId()!==targetConversationId) {
       return {ok:false,error:"This tab does not match the requested ChatGPT conversation."};
     }
-    const anotherJobOwnsConversation=
+    const lockOwner=state.conversationLocks.get(targetConversationId);
+    const anotherJobOwnsConversation=(lockOwner&&lockOwner!==jobId)||
       Array.from(state.monitors.values()).some(monitor=>
         monitor.conversationId===targetConversationId&&!monitor.completed&&monitor.jobId!==jobId
       )||
