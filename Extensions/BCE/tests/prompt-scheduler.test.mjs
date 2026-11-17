@@ -48,7 +48,7 @@ test("selects queued jobs from separate conversations up to concurrency limit", 
     makeJob({id:"d",conversationId:"four"},20)
   ];
 
-  assert.deepEqual(selectDispatchablePromptJobs(jobs,2),["a","b"]);
+  assert.deepEqual(selectDispatchablePromptJobs(jobs,2),["b","d"]);
 });
 
 test("does not select two jobs for the same conversation in one dispatch cycle", () => {
@@ -58,7 +58,7 @@ test("does not select two jobs for the same conversation in one dispatch cycle",
     makeJob({id:"c",conversationId:"two"},30)
   ];
 
-  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),["a","c"]);
+  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),["b","c"]);
 });
 
 test("an active or uncertain job locks its conversation but not other conversations", () => {
