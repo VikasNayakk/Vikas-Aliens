@@ -260,3 +260,32 @@ test("uncertain send outcomes lock the conversation until explicitly resolved", 
   assert.equal(resolved.job.currentToken,null);
   assert.deepEqual(selectDispatchablePromptJobs(resolved.jobs,3),["a"]);
 });
+
+test("counts active conversations against the global concurrency limit", () => {
+  const jobs = [
+    {...makeJob({id:"active-a",conversationId:"one"}),status:"awaiting_response"},
+    {...makeJob({id:"active-b",conversationId:"two"}),status:"needs_review"},
+    makeJob({id:"queued-c",conversationId:"three"},30),
+    makeJob({id:"queued-d",conversationId:"four"},40)
+  ];
+  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),["queued-c"]);
+});
+
+test("dispatches nothing when active jobs already fill the concurrency limit", () => {
+  const jobs = [
+    {...makeJob({id:"active-a",conversationId:"one"}),status:"sending"},
+    {...makeJob({id:"active-b",conversationId:"two"}),status:"awaiting_response"},
+    {...makeJob({id:"active-c",conversationId:"three"}),status:"needs_review"},
+    makeJob({id:"queued-d",conversationId:"four"})
+  ];
+  assert.deepEqual(selectDispatchablePromptJobs(jobs,3),[]);
+});
+
+test("counts every active job conservatively when persisted data repeats a conversation", () => {
+  const jobs = [
+    {...makeJob({id:"active-a",conversationId:"one"}),status:"awaiting_response"},
+    {...makeJob({id:"active-b",conversationId:"one"}),status:"needs_review"},
+    makeJob({id:"queued-c",conversationId:"two"})
+  ];
+  assert.deepEqual(selectDispatchablePromptJobs(jobs,2),[]);
+});
