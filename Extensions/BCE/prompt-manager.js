@@ -56,7 +56,8 @@ function renderTemplateVariables(){
 }
 function renderTemplates(preferredId){
   const select=$("templateSelect");
-  const current=preferredId||select.value;
+  const current=preferredId!==undefined?preferredId:select.value;
+  const clearDraft=preferredId===""||!!current&&!templates.some(item=>item.id===current);
   select.replaceChildren();
   const placeholder=document.createElement("option");
   placeholder.value="";
@@ -80,6 +81,9 @@ function renderTemplates(preferredId){
   if(selected){
     $("templateName").value=selected.name;
     $("templateContent").value=selected.content;
+  }else if(clearDraft){
+    $("templateName").value="";
+    $("templateContent").value="";
   }
   renderTemplateVariables();
 }
