@@ -403,6 +403,7 @@ $("updateTemplate").addEventListener("click",async()=>{
       content:$("templateContent").value,
       enabled:selected.enabled
     });
+    $("templateVariables").replaceChildren();
     await refreshTemplates(result.template.id);
     templateStatus("Template updated.");
   }catch(error){templateStatus(error.message,true);}
