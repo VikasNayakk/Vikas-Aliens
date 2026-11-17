@@ -45,6 +45,10 @@ This browser-only mode watches Teams in-app notification cards in an open Teams 
 - The optional OpenAI analysis handler remains in the source, but the active Teams live reader does not automatically send monitored messages to OpenAI.
 - Chrome speech voices and available audio codecs depend on the browser and operating system.
 
+## Real-browser verification
+
+The manual Chrome acceptance suite is documented in [BROWSER-SMOKE-TEST.md](BROWSER-SMOKE-TEST.md). Automated CI passing does not mark these real-browser cases as passed; record results against the exact tested commit SHA.
+
 ## Development checks
 
 No npm package installation is required. Use Node.js 22 or later.
