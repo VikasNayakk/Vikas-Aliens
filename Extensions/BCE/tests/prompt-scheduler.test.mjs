@@ -10,6 +10,7 @@ import {
   markPromptResponseUncertain,
   requestPromptPause,
   requestPromptStop,
+  recoverPromptJobsAfterWorkerRestart,
   resolveUncertainPromptJob,
   resumePromptJob,
   selectDispatchablePromptJobs
@@ -213,6 +214,38 @@ test("pause and resume preserve progress while keeping the current conversation 
   const resumed=resumePromptJob(done.jobs,"job-a",1400);
   assert.equal(resumed.job.status,"queued");
   assert.equal(resumed.job.completedCount,1);
+});
+
+test("worker restart moves an in-flight send to review and preserves its conversation lock", () => {
+  let jobs=[
+    makeJob({id:"sending",conversationId:"one"}),
+    makeJob({id:"queued",conversationId:"one"}),
+    makeJob({id:"other",conversationId:"two"})
+  ];
+  jobs=beginPromptSend(jobs,"sending","token-a",1100).jobs;
+
+  const recovered=recoverPromptJobsAfterWorkerRestart(jobs,1200);
+  assert.equal(recovered.ok,true);
+  assert.deepEqual(recovered.recoveredJobIds,["sending"]);
+  assert.equal(recovered.jobs[0].status,"needs_review");
+  assert.equal(recovered.jobs[0].currentToken,"token-a");
+  assert.deepEqual(selectDispatchablePromptJobs(recovered.jobs,3),["other"]);
+});
+
+test("worker restart leaves safely queued and awaiting-response jobs unchanged", () => {
+  let jobs=[
+    makeJob({id:"queued",conversationId:"one"}),
+    makeJob({id:"waiting",conversationId:"two"})
+  ];
+  jobs=beginPromptSend(jobs,"waiting","token-b",1100).jobs;
+  jobs=confirmPromptSent(jobs,"waiting","token-b",1200).jobs;
+
+  const recovered=recoverPromptJobsAfterWorkerRestart(jobs,1300);
+  assert.equal(recovered.ok,true);
+  assert.deepEqual(recovered.recoveredJobIds,[]);
+  assert.equal(recovered.jobs[0].status,"queued");
+  assert.equal(recovered.jobs[1].status,"awaiting_response");
+  assert.deepEqual(selectDispatchablePromptJobs(recovered.jobs,3),["queued"]);
 });
 
 test("uncertain send outcomes lock the conversation until explicitly resolved", () => {
