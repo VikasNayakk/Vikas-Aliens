@@ -99,7 +99,7 @@ The currently active toolbar popup is a Teams reader. The existing ChatGPT extra
 9. `teamsMonitorCount` currently reports the number of open Teams tabs, not a verified count of selected-group monitors.
 10. The current speech queue is persisted, but service-worker restart recovery needs explicit tests for every queue phase (group announcement, five-second gap, message speech and audio playback). A persisted in-progress item must not become permanently stuck or replay an already completed message.
 11. The existing ChatGPT extraction logic relies on ChatGPT page DOM selectors. It is read-only and will require a separate, carefully tested control layer for sending prompts and detecting generation completion.
-12. The current permissions cover ChatGPT, OpenAI API and Teams only. Excel, To Do, OneDrive, OneNote, Microsoft Graph and other application scopes are not yet declared or implemented.
+12. The current permissions cover ChatGPT, OpenAI API and Teams only. Excel, To Do, OneDrive, OneNote, Microsoft Graph and other application scopes are not yet declared or implemented. A Native Messaging bridge design is documented in `AI-BRIDGE.md`; it is not connected or enabled.
 
 ### 3.3 What is not implemented yet
 
@@ -108,14 +108,13 @@ The currently active toolbar popup is a Teams reader. The existing ChatGPT extra
 - Direct small-task action catalog.
 - Approval inbox and task lifecycle.
 - Teams task/assignment classification addressed to the owner.
-- Persistent prompt library and ChatGPT send scheduler.
-- Per-conversation execution lock and assistant-completion detector.
-- Finite / unlimited repeat controls with pause, resume and explicit stop.
-- Multiple-conversation scheduling and recovery.
+- Real-browser validation of the ChatGPT scheduler's DOM send/completion heuristics and restart recovery.
+- Saved prompt templates, per-job repeat intervals and Thinking-mode selection.
+- Server-confirmed assistant completion; current completion is a conservative DOM heuristic.
 - Workflow discovery, workflow authoring interview, generation brief or generated-workflow validation.
 - GitHub workflow publish/fetch/update pipeline.
 - Excel, To Do, OneDrive, OneNote or other application workflow adapters.
-- End-to-end automated tests for the above.
+- End-to-end automated tests for the remaining bridge, task intake, workflow and application-adapter features.
 
 ---
 
