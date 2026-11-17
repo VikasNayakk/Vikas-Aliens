@@ -1034,13 +1034,19 @@ async function onTeamsMessage(message,sender) {
 
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message?.type==="GET_CHATGPT_CONVERSATIONS") {
-    listChatGPTConversations().then(conversations=>sendResponse({ok:true,conversations}))
-      .catch(error=>sendResponse({ok:false,error:error.message}));
+    (async()=>{
+      await ensurePromptRuntimeRecovered();
+      const conversations=await listChatGPTConversations();
+      sendResponse({ok:true,conversations});
+    })().catch(error=>sendResponse({ok:false,error:error.message}));
     return true;
   }
   if(message?.type==="GET_CHATGPT_PROMPT_JOBS") {
-    getStoredPromptJobs().then(jobs=>sendResponse({ok:true,jobs}))
-      .catch(error=>sendResponse({ok:false,error:error.message}));
+    (async()=>{
+      await ensurePromptRuntimeRecovered();
+      const jobs=await getStoredPromptJobs();
+      sendResponse({ok:true,jobs});
+    })().catch(error=>sendResponse({ok:false,error:error.message}));
     return true;
   }
   if(message?.type==="CREATE_CHATGPT_PROMPT_JOB") {
