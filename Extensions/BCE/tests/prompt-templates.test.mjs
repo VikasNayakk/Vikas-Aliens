@@ -25,7 +25,7 @@ test("creates a named template and extracts unique variables in source order",()
 
 test("updates an existing template without changing its identity or creation time",()=>{
   const created=upsertPromptTemplate([],draft(),100);
-  const updated=upsertPromptTemplate(created.templates,draft({name:"Weekly report",content:"Summary: {{week}}"}),200);
+  const updated=upsertPromptTemplate(created.templates,draft({name:"Weekly report",content:"Summary: {{week}}",updateExisting:true}),200);
   assert.equal(updated.ok,true);
   assert.equal(updated.template.id,"template-1");
   assert.equal(updated.template.createdAt,100);
