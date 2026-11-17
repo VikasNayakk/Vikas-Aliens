@@ -370,7 +370,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - ChatGPT page adapter: **registered and statically validated**; explicit per-conversation page locks prevent a second job while a response monitor is active. Live DOM selectors and generation completion heuristic are **not yet verified in a real Chrome / ChatGPT session**.
 - Prompt-job worker recovery: **implemented and unit-tested**; a persisted send with uncertain outcome moves to manual review rather than being resent automatically.
 - Current-commit whitespace validation: **passed**.
-- Latest fully verified commit: `2b625b9c8e392a74907f506b987d4d1709554a40` ([GitHub Actions run #144](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44105207956)).
+- Latest fully verified commit: `2b625b9c8e392a74907f506b987d4c1709554a40` ([GitHub Actions run #144](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44105207956)).
 - Local developer command: **`npm run check` passed**; CI runs the same command without third-party dependencies.
 - Privacy and runtime documentation: **updated** for ChatGPT prompt storage, local page processing and current implementation limits.
 - Real Chrome / Teams / ChatGPT browser smoke verification: **0%** (not performed in this repository session).
