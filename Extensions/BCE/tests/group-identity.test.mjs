@@ -16,6 +16,17 @@ test("creates a new group with stable Teams conversation identity", () => {
   assert.equal(result.group.chatId,"19:chat-a");
 });
 
+test("refuses to add a new group when Teams does not expose a stable conversation ID", () => {
+  const result=resolveTeamsGroupIdentity([],{
+    groupKey:"operations",
+    groupName:"Operations",
+    chatId:""
+  },11);
+
+  assert.equal(result.ok,false);
+  assert.match(result.error,/More options > Copy link/i);
+});
+
 test("reuses the same conversation after its display name changes", () => {
   const old={id:"19:chat-a",key:"ops",name:"Ops",chatId:"19:chat-a",tabIds:[11]};
   const result=resolveTeamsGroupIdentity([old],{
