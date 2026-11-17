@@ -344,8 +344,15 @@
     if(!ALLOWED_HOSTS.has(location.hostname)||conversationId()!==targetConversationId) {
       return {ok:false,error:"This tab does not match the requested ChatGPT conversation."};
     }
-    if(stopSignalVisible()) {
-      return {ok:false,error:"ChatGPT is already generating a response in this conversation. No prompt was sent."};
+    const anotherJobOwnsConversation=
+      Array.from(state.monitors.values()).some(monitor=>
+        monitor.conversationId===targetConversationId&&!monitor.completed&&monitor.jobId!==jobId
+      )||
+      Array.from(state.pendingSends.entries()).some(([activeJobId,pending])=>
+        activeJobId!==jobId&&pending.conversationId===targetConversationId
+      );
+    if(stopSignalVisible()||anotherJobOwnsConversation) {
+      return {ok:false,error:"ChatGPT is already generating a response or another prompt is active in this conversation. No prompt was sent."};
     }
 
     const existing=state.pendingSends.get(jobId);
