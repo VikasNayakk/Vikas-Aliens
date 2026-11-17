@@ -213,7 +213,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Document active `chrome.runtime` message contracts in `MESSAGE-CONTRACTS.md`.
 - [x] Validate Teams message payload types, field sizes, required routing fields and audio URL protocols at the service-worker boundary.
 - [x] Use stable Teams conversation IDs, reject same-name/different-ID collisions, and require one explicit remove/re-add for unverifiable legacy display-name-only groups.
-- [ ] Review and remove or deliberately reconnect obsolete monitor-tab helpers.
+- [x] Remove inactive dedicated monitor-tab creation/restoration helpers and the unused V16 chat-info protocol; retain cleanup for stale legacy monitor tabs.
 - [ ] Decide whether the side panel becomes the primary workspace; wire it intentionally or retire its unreachable code.
 - [ ] Consolidate the duplicate Teams reader so only one authoritative pipeline is active.
 - [x] Correct popup labels and make the pending counter include the active batch's uncompleted messages. Separate spoken / failed counts remain pending.
@@ -342,13 +342,14 @@ The target product is much larger than the existing Voice Speakers release. Stat
 **Current verified baseline (2026-11-17):**
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
-- Phase 1 foundation stabilization: **7 of 13 tasks complete (54%)**; 6 tasks remain.
+- Phase 1 foundation stabilization: **8 of 13 tasks complete (62%)**; 5 tasks remain.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 13 `.js` / `.mjs` files in the audited folder.
 - BCE unit tests: **17 / 17 passed** (speech queue helpers, Teams message payload validation and stable group identity / legacy migration decisions).
 - Manifest V3 JSON and referenced-file validation: **passed** (4 active references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
 - Stable Teams group identity: **implemented and unit-tested**; adding a new group requires a conversation ID, duplicate display-name collisions are rejected, and old display-name-only saved groups require one manual remove/re-add.
 - Current-commit whitespace validation: **passed**.
+- Obsolete dedicated monitor-tab workflow: **removed**; last-five message reading remains on the current tab, and stale legacy monitor tabs still have cleanup handling.
 - Real Chrome / Teams browser smoke verification: **0%** (not run in this repository review).
 - BCE-side external-AI connector bridge: **0% implemented** (AI model, training and reasoning are outside this extension workstream).
 - ChatGPT prompt sending and finite / unlimited scheduling: **0% implemented**.
