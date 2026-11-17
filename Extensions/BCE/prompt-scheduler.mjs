@@ -440,6 +440,8 @@ export function requestStopAllPromptJobs(jobs,now=Date.now()) {
         currentToken:null,
         responseBaseline:null,
         uncertaintyKind:null,
+        nextRunAt:null,
+        remainingDelayMs:null,
         updatedAt:now
       };
     }
