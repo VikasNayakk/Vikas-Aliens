@@ -278,7 +278,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [ ] Add a global cancel-all action.
 - [x] Recover persisted prompt jobs after service-worker wake, tab reload and tab closure without automatically retrying uncertain sends; browser integration testing remains pending.
 - [ ] Add detailed per-repeat run history (individual attempt timestamps and outcomes).
-- [ ] Complete the browser test matrix: identical prompts, empty / maximum-length prompts, failed sends, interrupted generation, navigation and worker restart.
+- [ ] Complete the manual Chrome browser test matrix in [BROWSER-SMOKE-TEST.md](BROWSER-SMOKE-TEST.md): identical prompts, empty / maximum-length prompts, failed sends, interrupted generation, navigation, worker restart, concurrency, stop behavior and Teams-reader regression. The matrix is documented; all real-browser cases remain Not run until observed in Chrome.
 - [ ] Add the requested ability to request a ChatGPT UI mode (for example Thinking) only when the current page exposes a verifiable control; otherwise report that the mode is unavailable.
 
 ### Phase 5 — Teams task intake and approval inbox (BCE side)
