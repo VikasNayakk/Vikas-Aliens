@@ -93,3 +93,12 @@ export function isTeamsContentSender(sender) {
   return Number.isInteger(tabId) &&
     /^https:\/\/(?:teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(sourceUrl);
 }
+
+export async function createMessageFingerprint(value) {
+  if(!globalThis.crypto?.subtle) {
+    throw new Error("Web Crypto is unavailable; secure message fingerprinting cannot continue.");
+  }
+  const bytes=new TextEncoder().encode(String(value??""));
+  const digest=await globalThis.crypto.subtle.digest("SHA-256",bytes);
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,"0")).join("");
+}
