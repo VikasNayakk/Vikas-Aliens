@@ -15,7 +15,7 @@ BCE uses `chrome.storage.local` for extension state. The current Teams reader ma
 - Selected group names, normalized keys, stable conversation IDs, saved tab associations and priority order.
 - The most recent eight accepted Teams message events, including sender and message text.
 - Pending and currently active speech batches, including message text and audio references, so reading can continue after service-worker suspension.
-- Processed-message identifiers (up to the configured cap). When Teams provides no stable message ID, BCE stores a SHA-256 fingerprint instead of embedding the message text in that identifier.
+- Processed-message identifiers (up to the configured cap). When Teams provides no stable message ID, BCE stores a SHA-256 fingerprint instead of embedding the message text in that identifier. Entries written by earlier versions may still contain text-based fallback keys until they are pruned by the cap or extension storage is cleared.
 - Message counters, queue state, last status message and popup theme preference.
 
 This local storage is **not encrypted by BCE**. Anyone who can access the browser profile or extension storage may be able to inspect it. Turning live reading OFF stops speech/audio and clears the pending/current speech queue, but it does not erase the selected groups, recent events or processed-message history. Removing a selected group removes its queued speech messages; it does not erase every previously stored event from that group.
