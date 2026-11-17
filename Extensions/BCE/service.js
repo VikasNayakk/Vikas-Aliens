@@ -15,7 +15,8 @@ import {
   recoverPromptJobsAfterWorkerRestart,
   resolveUncertainPromptJob,
   resumePromptJob,
-  selectDispatchablePromptJobs
+  selectDispatchablePromptJobs,
+  requestStopAllPromptJobs
 } from "./prompt-scheduler.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
@@ -290,6 +291,13 @@ async function createChatGPTPromptJob(request) {
   await publishPromptJobs();
   dispatchPromptJobs().catch(()=>{});
   return result.job;
+}
+async function stopAllPromptJobs() {
+  await ensurePromptRuntimeRecovered();
+  const result=await mutatePromptJobs(jobs=>requestStopAllPromptJobs(jobs,Date.now()));
+  if(!result?.ok) throw new Error(result?.error||"Could not stop all prompt jobs.");
+  await publishPromptJobs();
+  return result.summary;
 }
 async function mutatePromptJob(jobId,action,decision) {
   await ensurePromptRuntimeRecovered();
@@ -1047,6 +1055,12 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       const jobs=await getStoredPromptJobs();
       sendResponse({ok:true,jobs});
     })().catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(message?.type==="STOP_ALL_CHATGPT_PROMPT_JOBS") {
+    stopAllPromptJobs()
+      .then(summary=>sendResponse({ok:true,summary}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
     return true;
   }
   if(message?.type==="CREATE_CHATGPT_PROMPT_JOB") {
