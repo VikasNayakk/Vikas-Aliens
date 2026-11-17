@@ -178,11 +178,12 @@ export function completePromptResponse(jobs,jobId,token,now=Date.now()) {
   const completedCount=job.completedCount+1;
   let status="queued";
   if(job.stopRequested) status="stopped";
-  else if(job.pauseRequested) status="paused";
   else if(job.repeatLimit!==null&&completedCount>=job.repeatLimit) status="completed";
+  else if(job.pauseRequested) status="paused";
 
   const repeatIntervalSeconds=validRepeatInterval(job.repeatIntervalSeconds)?job.repeatIntervalSeconds:0;
   const nextRunAt=status==="queued"&&repeatIntervalSeconds>0?now+repeatIntervalSeconds*1000:null;
+  const remainingDelayMs=status==="paused"&&repeatIntervalSeconds>0?repeatIntervalSeconds*1000:null;
   if(nextRunAt!==null) status="waiting_interval";
   const updated={
     ...job,
@@ -194,7 +195,7 @@ export function completePromptResponse(jobs,jobId,token,now=Date.now()) {
     pauseRequested:false,
     stopRequested:false,
     nextRunAt,
-    remainingDelayMs:null,
+    remainingDelayMs,
     lastCompletedAt:now,
     updatedAt:now
   };

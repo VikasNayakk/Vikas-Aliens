@@ -421,6 +421,15 @@ test("finite final completion and pause-after-response do not schedule another i
   const paused=completePromptResponse(jobs,"job-a","t2",5000);
   assert.equal(paused.job.status,"paused");
   assert.equal(paused.job.nextRunAt,null);
+  assert.equal(paused.job.remainingDelayMs,60000);
+
+  jobs=[makeJob({repeatLimit:1,repeatIntervalSeconds:60})];
+  jobs=beginPromptSend(jobs,"job-a","t3",1100).jobs;
+  jobs=confirmPromptSent(jobs,"job-a","t3",1200).jobs;
+  jobs=requestPromptPause(jobs,"job-a",1300).jobs;
+  const finalWhilePauseRequested=completePromptResponse(jobs,"job-a","t3",5000);
+  assert.equal(finalWhilePauseRequested.job.status,"completed");
+  assert.equal(finalWhilePauseRequested.job.nextRunAt,null);
 });
 test("stop-all stops interval-waiting jobs instead of leaving an alarm armed",()=>{
   const waiting={...makeJob({repeatIntervalSeconds:60}),status:"waiting_interval",nextRunAt:70000};
