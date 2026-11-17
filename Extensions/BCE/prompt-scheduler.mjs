@@ -371,3 +371,42 @@ export function resolveUncertainPromptJob(jobs,jobId,decision,now=Date.now()) {
   }
   return {ok:true,jobs:replaceJob(jobs,updated),job:updated};
 }
+
+export function requestStopAllPromptJobs(jobs,now=Date.now()) {
+  if(!Array.isArray(jobs)) return errorResult("Prompt jobs must be an array.");
+  if(!validTime(now)) return errorResult("Stop-all time is invalid.");
+
+  let queuedStopped=0;
+  let activeStopRequested=0;
+  let reviewUnchanged=0;
+  const updatedJobs=jobs.map(job=>{
+    if(!job||TERMINAL_STATES.has(job.status)) return job;
+    if(job.status==="queued"||job.status==="paused") {
+      queuedStopped++;
+      return {
+        ...job,
+        status:"stopped",
+        pauseRequested:false,
+        stopRequested:false,
+        currentToken:null,
+        responseBaseline:null,
+        uncertaintyKind:null,
+        updatedAt:now
+      };
+    }
+    if(job.status==="sending"||job.status==="awaiting_response") {
+      activeStopRequested++;
+      return {...job,stopRequested:true,updatedAt:now};
+    }
+    if(job.status==="needs_review") {
+      reviewUnchanged++;
+    }
+    return job;
+  });
+
+  return {
+    ok:true,
+    jobs:updatedJobs,
+    summary:{queuedStopped,activeStopRequested,reviewUnchanged}
+  };
+}
