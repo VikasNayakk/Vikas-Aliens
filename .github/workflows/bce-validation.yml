@@ -74,4 +74,4 @@ jobs:
           NODE
 
       - name: Check whitespace errors
-        run: git diff --check
+        run: git show --check --oneline HEAD
