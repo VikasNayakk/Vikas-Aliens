@@ -1,7 +1,7 @@
 # BCE Runtime Message Contracts
 
-**Scope:** Active Manifest V3 runtime only  
-**Working branch:** `Chatgpt`  
+**Scope:** Active Manifest V3 runtime only
+**Working branch:** `Chatgpt`
 **Last reviewed:** 2026-11-17
 
 This document records the current message boundary between the toolbar popup, the service worker and the Teams content script. Treat message names and fields as public internal contracts: change them only with caller tracing, compatibility handling and tests.
