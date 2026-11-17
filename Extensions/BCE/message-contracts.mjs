@@ -91,5 +91,5 @@ export function isTeamsContentSender(sender) {
   const tabId=sender?.tab?.id;
   const sourceUrl=sender?.url||sender?.tab?.url||"";
   return Number.isInteger(tabId) &&
-    /^https:\/\/(?:teams\.cloud\.microsoft|teams\.microsoft)\.com\//i.test(sourceUrl);
+    /^https:\/\/(?:teams\.cloud\.microsoft|teams\.microsoft\.com)\//i.test(sourceUrl);
 }
