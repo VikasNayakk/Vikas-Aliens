@@ -267,6 +267,9 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Allow each prompt job to select one or more exact ChatGPT conversations.
 - [x] Add finite repeat count and unlimited-until-stopped modes.
 - [x] Add repeat interval / dispatch policy configuration.
+  - `0` means immediate dispatch; non-zero intervals are limited to 30 seconds–24 hours.
+  - The delay starts after confirmed assistant-response completion and is persisted as an absolute due timestamp scheduled with Chrome alarms.
+  - Waiting jobs retain their conversation lock without consuming an active concurrency slot; pause preserves remaining delay, while stop / Cancel All clears the scheduled run.
 - [x] Persist job state, send token, response baseline, repeat counters and conversation identity.
 - [x] Implement one serial queue and exclusive lock per conversation.
 - [x] Allow independent conversation queues to run concurrently (maximum 3 by default).
@@ -357,7 +360,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
 - Phase 4 ChatGPT prompt automation: **12 of 16 implementation tasks complete (75%)**; browser smoke testing, detailed run history, broader error recovery and Thinking-mode control remain pending.
 - BCE JavaScript / ES-module syntax validation: **passed** for all 21 `.js` / `.mjs` files in the current audited folder.
-- BCE unit tests: **57 / 57 passed** in GitHub Actions, including 3 global-cancel tests and 10 prompt-template lifecycle / variable tests.
+- BCE unit tests: **69 / 69 passed** in GitHub Actions, including 12 repeat-interval lifecycle / policy tests, 3 global-cancel tests and 10 prompt-template lifecycle / variable tests.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
 - Local HTML asset validation: **passed** (4 pages and their local script / stylesheet references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
@@ -367,7 +370,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - ChatGPT page adapter: **registered and statically validated**; explicit per-conversation page locks prevent a second job while a response monitor is active. Live DOM selectors and generation completion heuristic are **not yet verified in a real Chrome / ChatGPT session**.
 - Prompt-job worker recovery: **implemented and unit-tested**; a persisted send with uncertain outcome moves to manual review rather than being resent automatically.
 - Current-commit whitespace validation: **passed**.
-- Latest fully verified commit: `59e404a2cc13adce5386995ecd644a24cb5e0b78` ([GitHub Actions run #138](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44101051350)).
+- Latest fully verified commit: `2b625b9c8e392a74907f506b987d4d1709554a40` ([GitHub Actions run #144](https://github.com/VikasNayakk/Vikas-Aliens/actions/runs/44105207956)).
 - Local developer command: **`npm run check` passed**; CI runs the same command without third-party dependencies.
 - Privacy and runtime documentation: **updated** for ChatGPT prompt storage, local page processing and current implementation limits.
 - Real Chrome / Teams / ChatGPT browser smoke verification: **0%** (not performed in this repository session).
