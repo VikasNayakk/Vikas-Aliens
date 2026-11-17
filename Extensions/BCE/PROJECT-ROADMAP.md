@@ -264,7 +264,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 
 **Important verification boundary:** the ChatGPT page adapter uses composer / Send DOM controls and a conservative generation-state heuristic (new assistant message plus no visible generation signal and five seconds of stable content). This is not a server-confirmed completion signal. The extension has passed static / unit CI, but real Chrome + ChatGPT browser smoke tests have not been performed.
 
-- [ ] Add saved prompt templates with names, variables and enabled/disabled state.
+- [x] Add saved prompt templates with names, variables and enabled/disabled state. The extension stores up to 100 named templates locally, validates unique names and variable syntax, and supports insert / update / enable / disable / delete.
 - [x] Allow each prompt job to select one or more exact ChatGPT conversations.
 - [x] Add finite repeat count and unlimited-until-stopped modes.
 - [ ] Add repeat interval / dispatch policy configuration.
@@ -275,7 +275,7 @@ Status meanings: **DONE** = verified from the current static source; **IN PROGRE
 - [x] Add assistant-generation state observation and stable-response detection; live DOM behavior still requires browser verification.
 - [ ] Detect and guide recovery for login, network, rate-limit, model-selection and other page-error states.
 - [x] Add per-job pause, resume and stop controls, plus manual review for uncertain sends / responses; uncertain dispatches can be stopped directly without retrying.
-- [ ] Add a global cancel-all action.
+- [x] Add a global cancel-all action; queued work stops immediately, while active responses are allowed to finish before stopping future repeats. Needs-review jobs remain locked.
 - [x] Recover persisted prompt jobs after service-worker wake, tab reload and tab closure without automatically retrying uncertain sends; browser integration testing remains pending.
 - [ ] Add detailed per-repeat run history (individual attempt timestamps and outcomes).
 - [ ] Complete the manual Chrome browser test matrix in [BROWSER-SMOKE-TEST.md](BROWSER-SMOKE-TEST.md): identical prompts, empty / maximum-length prompts, failed sends, interrupted generation, navigation, worker restart, concurrency, stop behavior and Teams-reader regression. The matrix is documented; all real-browser cases remain Not run until observed in Chrome.
@@ -356,9 +356,9 @@ The target product is much larger than the existing Voice Speakers release. Stat
 
 - Existing-source static audit: **100%** for the files listed in Section 2.
 - Phase 1 foundation stabilization: **12 of 13 tasks complete (92%)**; the remaining task is real Chrome / Teams browser integration testing.
-- Phase 4 ChatGPT prompt automation: **10 of 17 implementation tasks complete (59%)**; browser smoke testing, repeat intervals, prompt templates, detailed run history, broader error recovery and Thinking-mode control remain pending.
-- BCE JavaScript / ES-module syntax validation: **passed** for all 19 `.js` / `.mjs` files in the audited folder.
-- BCE unit tests: **44 / 44 passed**, including speech queue helpers, Teams message validation, stable group identity, prompt job state transitions, send / response uncertainty, worker-restart recovery and ChatGPT content-script conversation-lock checks.
+- Phase 4 ChatGPT prompt automation: **11 of 16 implementation tasks complete (69%)**; repeat intervals, browser smoke testing, detailed run history, broader error recovery and Thinking-mode control remain pending.
+- BCE JavaScript / ES-module syntax validation: last verified baseline passed for 19 `.js` / `.mjs` files; two new `.mjs` files have since been added / changed and require the next full check.
+- BCE unit tests: last verified baseline **44 / 44 passed**. Since that run, 12 additional tests were added (3 global-cancel tests and 9 prompt-template tests); the expanded suite has not yet been executed.
 - Manifest V3 JSON and referenced-file validation: **passed** (5 manifest references checked).
 - Local HTML asset validation: **passed** (4 pages and their local script / stylesheet references checked).
 - Active Teams message boundary validation: **implemented and unit-tested** (required sender/group, bounded payload fields, safe audio URL protocols and audio-reference format).
@@ -376,7 +376,7 @@ The target product is much larger than the existing Voice Speakers release. Stat
 - Workflow registry and deterministic executor: **0% implemented**.
 - Excel / To Do / OneDrive / OneNote adapters: **0% implemented**.
 
-A simple task-count meter (equal weight per checklist item across Phases 0–8) is **27 / 96 complete (28.1%) and 69 / 96 pending (71.9%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
+A simple task-count meter (equal weight per checklist item across Phases 0–8) is **29 / 96 complete (30.2%) and 67 / 96 pending (69.8%)**. This counts recorded engineering checklist items; it is not a weighted product-readiness score. The major feature groups have different scope and dependencies, and live-browser behavior remains separately tracked. A task is counted as complete only when its code and automated acceptance check pass. Future progress reports must include completed, in-progress, pending and blocked counts plus the tested commit SHA.
 
 ---
 
