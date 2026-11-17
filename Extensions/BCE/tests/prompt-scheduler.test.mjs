@@ -216,6 +216,21 @@ test("pause and resume preserve progress while keeping the current conversation 
   assert.equal(resumed.job.completedCount,1);
 });
 
+test("an uncertain dispatch can be stopped directly without retrying the prompt", () => {
+  let jobs=[
+    makeJob({id:"uncertain",conversationId:"one"}),
+    makeJob({id:"next",conversationId:"one"})
+  ];
+  jobs=beginPromptSend(jobs,"uncertain","token-a",1100).jobs;
+  jobs=markPromptDispatchUncertain(jobs,"uncertain","token-a","Send result is uncertain.",1200).jobs;
+
+  const stopped=resolveUncertainPromptJob(jobs,"uncertain","stop_job",1300);
+  assert.equal(stopped.ok,true);
+  assert.equal(stopped.job.status,"stopped");
+  assert.equal(stopped.job.currentToken,null);
+  assert.deepEqual(selectDispatchablePromptJobs(stopped.jobs,3),["next"]);
+});
+
 test("worker restart moves an in-flight send to review and preserves its conversation lock", () => {
   let jobs=[
     makeJob({id:"sending",conversationId:"one"}),
