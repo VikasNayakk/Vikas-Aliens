@@ -1,7 +1,7 @@
 import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
 import {appendUniqueMessages,countPendingSpeechMessages,normalizeSpeechBatch} from "./speech-queue.mjs";
 import {resolveTeamsGroupIdentity} from "./group-identity.mjs";
-import {isTeamsContentSender,normalizeTeamsLiveMessage} from "./message-contracts.mjs";
+import {createMessageFingerprint,isTeamsContentSender,normalizeTeamsLiveMessage} from "./message-contracts.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
 async function requestOpenAI(key,model,messages){let r;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},body:JSON.stringify({model,temperature:0,messages})});}catch(e){throw Error("Network/CORS error: "+e.message);}const data=await r.json().catch(()=>({}));if(!r.ok){const detail=data?.error?.message||data?.error?.code||("HTTP "+r.status);throw Error("OpenAI API "+r.status+": "+detail);}const output=data.choices?.[0]?.message?.content?.trim();if(!output)throw Error("OpenAI returned an empty response.");return output;}
@@ -576,7 +576,9 @@ async function onTeamsMessage(message,sender) {
   if(!senderName||(!text&&!audioRef&&!audioUrl)) return;
 
   const messageId=String(message.messageId||"");
-  const stableKey=groupKey+"|"+(messageId||[senderName,text,audioRef,audioUrl,message.timestamp||""].join("|"));
+  const fallbackIdentity=[senderName,text,audioRef,audioUrl,String(message.timestamp||"")].join("\u001f");
+  const fallbackKey=messageId||("sha256:"+await createMessageFingerprint(fallbackIdentity));
+  const stableKey=groupKey+"|"+fallbackKey;
   if(await wasMessageProcessed(stableKey)) return;
   const now=Date.now();
 
