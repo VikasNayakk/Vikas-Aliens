@@ -118,6 +118,7 @@ function renderTemplateToPrompt(){
     if(!Object.prototype.hasOwnProperty.call(values,name)) throw new Error("Enter a value for template variable: "+name);
     return values[name];
   });
+  if(rendered.length>50000) throw new Error("The completed prompt is longer than 50,000 characters.");
   $("promptText").value=rendered;
   $("promptLength").textContent=rendered.length.toLocaleString()+" / 50,000";
   setBusy(busy);
