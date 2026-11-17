@@ -1,5 +1,6 @@
 import {localAnalyze,redactSensitiveText,SYSTEM_PROMPT} from "./analyzer.js";
 import {appendUniqueMessages,countPendingSpeechMessages,normalizeSpeechBatch} from "./speech-queue.mjs";
+import {resolveTeamsGroupIdentity} from "./group-identity.mjs";
 import {normalizeTeamsLiveMessage} from "./message-contracts.mjs";
 
 chrome.runtime.onMessage.addListener((m,s,send)=>{if(m?.type==="ANALYZE_MESSAGES"){analyze(m.text).then(send).catch(e=>send({output:"Analysis error: "+e.message,remote:false}));return true;}if(m?.type==="TEST_OPENAI"){testApi().then(send).catch(e=>send({ok:false,error:e.message}));return true;}});
@@ -112,7 +113,7 @@ async function setTeamsLiveEnabled(enabled) {
         group.monitorTabId=null;
       }
       delete group.monitorUrl;
-      delete group.chatId;
+      // Keep chatId as the stable identity of this selected conversation.
     }
     await chrome.storage.local.set({[TEAMS_GROUPS_KEY]:groups});
     const result=await injectTeamsTabs();
@@ -271,21 +272,28 @@ async function addCurrentGroup() {
   }
 
   const groups=await getStoredGroups();
-  let group=groups.find(item=>item.key===info.groupKey);
-  if(group) {
-    const tabIds=Array.isArray(group.tabIds)?group.tabIds:[];
-    if(!tabIds.includes(tab.id)) tabIds.push(tab.id);
-    group.tabIds=tabIds;
+  const resolved=resolveTeamsGroupIdentity(groups,info,tab.id);
+  if(!resolved.ok) throw new Error(resolved.error);
+
+  const existingIndex=info.chatId
+    ? groups.findIndex(item=>item.chatId===info.chatId)
+    : groups.findIndex(item=>item.key===info.groupKey);
+  let group=resolved.group;
+  if(existingIndex>=0) {
+    group={...groups[existingIndex],...resolved.group};
+    groups[existingIndex]=group;
   } else {
-    group={
-      id:info.groupKey,key:info.groupKey,name:info.groupName,
-      tabIds:[tab.id],lastAddedTabId:tab.id,priority:groups.length,readHistory:false
-    };
     groups.push(group);
   }
+
+  const tabIds=Array.isArray(group.tabIds)?group.tabIds:[];
+  if(!tabIds.includes(tab.id)) tabIds.push(tab.id);
+  group.tabIds=tabIds;
+  group.id=info.chatId||group.id||info.groupKey;
+  group.key=info.groupKey;
   group.name=info.groupName;
+  group.chatId=info.chatId||group.chatId||"";
   group.lastAddedTabId=tab.id;
-  delete group.chatId;
   delete group.monitorUrl;
   delete group.monitorTabId;
   groups.forEach((item,index)=>item.priority=index);
