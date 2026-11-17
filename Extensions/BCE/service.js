@@ -993,6 +993,41 @@ async function onTeamsMessage(message,sender) {
 }
 
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
+  if(message?.type==="GET_CHATGPT_CONVERSATIONS") {
+    listChatGPTConversations().then(conversations=>sendResponse({ok:true,conversations}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(message?.type==="GET_CHATGPT_PROMPT_JOBS") {
+    getStoredPromptJobs().then(jobs=>sendResponse({ok:true,jobs}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(message?.type==="CREATE_CHATGPT_PROMPT_JOB") {
+    createChatGPTPromptJob(message).then(async job=>{
+      sendResponse({ok:true,job,state:await publishPromptJobs()});
+    }).catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  const promptActions={
+    PAUSE_CHATGPT_PROMPT_JOB:"pause",
+    STOP_CHATGPT_PROMPT_JOB:"stop",
+    RESUME_CHATGPT_PROMPT_JOB:"resume",
+    RESOLVE_CHATGPT_PROMPT_JOB:"resolve"
+  };
+  if(promptActions[message?.type]) {
+    mutatePromptJob(message.jobId,promptActions[message.type],message.decision)
+      .then(async job=>sendResponse({ok:true,job,state:await publishPromptJobs()}))
+      .catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
+  if(
+    ["CHATGPT_TAB_READY","CHATGPT_RESPONSE_COMPLETED","CHATGPT_RESPONSE_UNCERTAIN"].includes(message?.type) &&
+    isChatGPTContentSender(sender)
+  ) {
+    handleChatGPTContentEvent(message,sender).catch(()=>{});
+  }
+
   if(message?.type==="GET_TEAMS_LIVE_STATUS") {
     getLiveState().then(sendResponse).catch(error=>sendResponse({teamsLastStatus:error.message}));
     return true;
@@ -1035,7 +1070,19 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 
 
 chrome.tabs.onUpdated.addListener(async(tabId,changeInfo,tab)=>{
-  if(changeInfo.status!=="complete" || !teamsUrl(tab?.url)) return;
+  if(changeInfo.status!=="complete") return;
+  if(chatgptUrl(tab?.url)) {
+    const jobs=await getStoredPromptJobs();
+    const hasPending=jobs.some(job=>job.tabId===tabId&&job.status==="awaiting_response");
+    if(hasPending) {
+      try {
+        const info=await getChatGPTTabInfo(tabId);
+        await resumePromptMonitorsForTab(tabId,info.conversationId);
+      } catch (_) {}
+    }
+    return;
+  }
+  if(!teamsUrl(tab?.url)) return;
   const enabled=await chrome.storage.local.get(TEAMS_LIVE_KEY);
   if(enabled[TEAMS_LIVE_KEY]) {
     try {
@@ -1057,6 +1104,7 @@ chrome.tabs.onRemoved.addListener(async tabId=>{
     if(group.monitorTabId===tabId){group.monitorTabId=null;changed=true;}
   }
   if(changed) await chrome.storage.local.set({[TEAMS_GROUPS_KEY]:groups});
+  await handlePromptTabRemoved(tabId);
   publishLiveState();
 });
 chrome.runtime.onStartup.addListener(async()=>{
@@ -1065,6 +1113,7 @@ chrome.runtime.onStartup.addListener(async()=>{
     const result=await injectTeamsTabs();
     await setStatus("Teams notification observers restored: "+result.injected+"/"+result.total+" tab(s).");
   }
+  await recoverPromptJobs();
 });
 chrome.runtime.onInstalled.addListener(async()=>{
   const enabled=await chrome.storage.local.get(TEAMS_LIVE_KEY);
@@ -1072,4 +1121,5 @@ chrome.runtime.onInstalled.addListener(async()=>{
     const result=await injectTeamsTabs();
     await setStatus("Teams notification observers attached: "+result.injected+"/"+result.total+" tab(s).");
   }
+  await recoverPromptJobs();
 });
