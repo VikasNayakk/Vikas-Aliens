@@ -277,7 +277,7 @@ async function createChatGPTPromptJob(request) {
     });
     const activeJobs=jobs.filter(item=>!["completed","stopped","failed"].includes(item.status));
     const recentTerminal=jobs.filter(item=>["completed","stopped","failed"].includes(item.status)&&
-      Date.now()-item.updatedAt<30*24*60*60*1000).slice(-150);
+      Date.now()-item.updatedAt<30*24*60*60*1000).slice(-50);
     const retained=[...activeJobs,...recentTerminal];
     return {ok:true,jobs:[...retained,job],job};
   });
