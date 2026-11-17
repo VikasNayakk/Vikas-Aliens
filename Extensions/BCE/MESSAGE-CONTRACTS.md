@@ -56,10 +56,12 @@ Do not use `teamsMonitorCount` as evidence that each selected Teams group has a 
 
 | Message type | Request fields | Expected response |
 |---|---|---|
-| `TEAMS_GET_GROUP_INFO_V17` | None; send to the active Teams tab, main frame | `{ ok, groupName, groupKey, baselineCount, error? }` |
+| `TEAMS_GET_GROUP_INFO_V17` | None; send to the active Teams tab, main frame | `{ ok, groupName, groupKey, chatId, baselineCount, error? }` |
 | `TEAMS_READ_LAST_FIVE_V16` | `groupKey: string` | `{ ok, groupName, messages }` or `{ ok:false, error }` |
 | `TEAMS_PLAY_AUDIO` | `audioRef?: string, audioUrl?: string, playbackId: string` | `{ ok:true, started:true }` or `{ ok:false, error }` |
 | `TEAMS_STOP_AUDIO` | None | `{ ok:true }` |
+
+The active group-registration path requires `chatId` to be a stable Teams conversation ID beginning with `19:`. BCE will not create or merge a newly selected group using only its display name. When Teams does not expose the ID, the UI error asks the owner to open a message's **More options → Copy link** and retry. Existing display-name-only saved groups are not automatically migrated because a tab ID cannot prove the tab still points to the original chat; remove and re-add those groups once.
 
 A message item returned by `TEAMS_READ_LAST_FIVE_V16` may contain:
 
