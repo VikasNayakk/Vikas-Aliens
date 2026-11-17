@@ -1,15 +1,13 @@
-# Voice Speakers — Aliens
+# Voice Speakers — Aliens (BCE foundation)
 
-Chrome Manifest V3 extension that reads ChatGPT replies aloud.
-
-Current Teams live reader release: **1.6.3**.
+Existing Chrome Manifest V3 extension being upgraded incrementally into the Aliens Browser Control Extension. The active **1.6.3** runtime currently provides selected Microsoft Teams group monitoring, message de-duplication, speech queueing and supported audio playback. It is not yet a general workflow automation engine.
 
 ## Current workflow
 
 ### Microsoft Teams group reader
 1. Open a Teams group in its own browser tab and click the Voice Speakers toolbar icon.
-2. Click **Add currently open Teams group**. The group name is detected from the Teams tab.
-3. When asked, choose **Yes, read last 5** or **No, only new**.
+2. Click **Add currently open Teams group**. BCE reads the group name and stable Teams conversation ID. If the ID is unavailable, open a message in that chat, choose **More options → Copy link**, then retry.
+3. When prompted, choose **Yes, read last 5** or **No, only new**.
 4. Add other selected groups from their normal Teams chats.
 5. Move groups up or down to set priority.
 6. Turn **Live message reading** ON.
@@ -25,17 +23,15 @@ This browser-only mode watches Teams in-app notification cards in an open Teams 
 ## Install locally
 1. Download or clone this repository.
 2. Open chrome://extensions and enable Developer mode.
-3. Choose **Load unpacked** and select the `Voice-Speakers` folder.
-4. Open ChatGPT and click the extension icon.
+3. Choose **Load unpacked** and select the `Extensions/BCE` folder.
+4. Open Microsoft Teams and click the extension icon.
 
-## Notes
-- Nested UI copies inside the same ChatGPT message are grouped as one prompt; separate prompts with identical wording remain separate when they are separate message turns.
-- Reply pairing follows conversation message order: each prompt is linked to the assistant message(s) before the next user prompt.
-- Extraction depends on ChatGPT's page structure and may need updates if its UI changes.
-- Voice names and gender availability depend on the browser and operating system.
-- The extension reads visible/rendered conversation messages only.
-- No API key is needed for conversation loading or speech playback.
-- Existing optional AI analysis settings remain available in the extension settings page.
+## Current implementation boundaries
+- The active manifest uses `popup.html` / `popup.js` as the toolbar UI, `service.js` as the service worker and `teams-content.js` as the Teams content script.
+- `sidepanel.html`, `ui.js` and `background.js` are legacy, unregistered files. Their old Teams reader and read-only ChatGPT parser are not active. Do not load that old side panel alongside the active Teams reader.
+- ChatGPT prompt sending, repeated prompt scheduling, multiple-conversation queues, workflow execution, Teams task approvals and Microsoft application adapters are not implemented yet.
+- The optional OpenAI analysis handler remains in the source, but the active Teams live reader does not automatically send monitored messages to OpenAI.
+- Chrome speech voices and available audio codecs depend on the browser and operating system.
 
 ## Development checks
 
